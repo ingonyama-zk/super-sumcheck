@@ -105,7 +105,7 @@ impl<F: Field> IPForMLSumcheck<F> {
                 }
             }
 
-            // generate challenge
+            // generate challenge α_i = H(α_{i-1}, r_poly);
             let mut preimage: Vec<F> = r_polys[round_index].clone();
             preimage.insert(0, previous_alpha);
             let alpha = hash_function(&preimage);
@@ -153,6 +153,7 @@ impl<F: Field> IPForMLSumcheck<F> {
             let round_poly_evaluation_at_1 = round_poly_evaluations[1];
             let computed_sum = round_poly_evaluation_at_0 + round_poly_evaluation_at_1;
 
+            // Check r_{i}(α_i) == r_{i+1}(0) + r_{i+1}(1)
             if computed_sum != expected_sum {
                 return Err("Prover message is not consistent with the claim.".into());
             }
@@ -162,6 +163,7 @@ impl<F: Field> IPForMLSumcheck<F> {
             preimage.insert(0, previous_alpha);
             let alpha = hash_function(&preimage);
 
+            // Compute r_{i}(α_i) using barycentric interpolation
             expected_sum = barycentric_interpolation(round_poly_evaluations, alpha);
         }
         Ok(true)
@@ -249,18 +251,19 @@ mod test {
         );
     }
 
-    fn combine_fn(data: &Vec<F>) -> F {
-        assert!(data.len() > 0);
-        data[0]
-    }
-
-    fn hash_fn(data: &Vec<F>) -> F {
-        assert!(data.len() > 0);
-        data.iter().sum::<F>() / F::from(8)
-    }
-
     #[test]
     fn test_sumcheck() {
+        // Define the combine function
+        fn combine_fn(data: &Vec<F>) -> F {
+            assert!(data.len() > 0);
+            data[0]
+        }
+
+        // Define the hash function for testing
+        fn hash_fn(data: &Vec<F>) -> F {
+            assert!(data.len() > 0);
+            data.iter().sum::<F>() / F::from(8)
+        }
         // Take a simple polynomial
         let num_variables = 3;
         let num_evaluations = (1 as u32) << num_variables;
@@ -271,6 +274,45 @@ mod test {
         let polynomials: Vec<linear_lagrange_list<F>> =
             vec![linear_lagrange_list::<F>::from(&poly)];
         let mut prover_state = IPForMLSumcheck::prover_init(&polynomials, 1);
+        let proof: SumcheckProof<F> =
+            IPForMLSumcheck::<F>::prove(&mut prover_state, &combine_fn, &hash_fn);
+
+        let result = IPForMLSumcheck::verify(claimed_sum, &proof, &hash_fn);
+        assert_eq!(result.unwrap(), true);
+    }
+
+    #[test]
+    fn test_product_sumcheck() {
+        // Define the combine function
+        fn combine_fn(data: &Vec<F>) -> F {
+            assert!(data.len() == 2);
+            data[0] * data[1]
+        }
+
+        // Define the hash function for testing
+        fn hash_fn(data: &Vec<F>) -> F {
+            assert!(data.len() > 0);
+            data.iter().sum::<F>()
+        }
+        // Take two simple polynomial
+        let num_variables = 3;
+        let num_evaluations = (1 as u32) << num_variables;
+        let evaluations_a: Vec<F> = (0..num_evaluations).map(|i| F::from(2 * i)).collect();
+        let evaluations_b: Vec<F> = (0..num_evaluations).map(|i| F::from(i + 1)).collect();
+        let claimed_sum = evaluations_a
+            .iter()
+            .zip(evaluations_b.iter())
+            .fold(F::zero(), |acc, (a, b)| acc + a * b);
+        let poly_a =
+            DenseMultilinearExtension::<F>::from_evaluations_vec(num_variables, evaluations_a);
+        let poly_b =
+            DenseMultilinearExtension::<F>::from_evaluations_vec(num_variables, evaluations_b);
+
+        let polynomials: Vec<linear_lagrange_list<F>> = vec![
+            linear_lagrange_list::<F>::from(&poly_a),
+            linear_lagrange_list::<F>::from(&poly_b),
+        ];
+        let mut prover_state = IPForMLSumcheck::prover_init(&polynomials, 2);
         let proof: SumcheckProof<F> =
             IPForMLSumcheck::<F>::prove(&mut prover_state, &combine_fn, &hash_fn);
 
