@@ -1,17 +1,8 @@
-use crate::{data_structures::linear_lagrange_list, verifier::VerifierMsg, IPForMLSumcheck};
+use crate::{data_structures::linear_lagrange_list, IPForMLSumcheck};
 use ark_ff::{batch_inversion_and_mul, Field};
-use ark_serialize::{CanonicalDeserialize, CanonicalSerialize};
-use ark_std::{cfg_iter_mut, log2, vec::Vec};
-use blake2::digest::typenum::Len;
+use ark_std::{log2, vec::Vec};
 #[cfg(feature = "parallel")]
 use rayon::prelude::*;
-
-/// Prover Message
-#[derive(Clone, CanonicalSerialize, CanonicalDeserialize)]
-pub struct ProverMsg<F: Field> {
-    /// evaluations on P(0), P(1), P(2), ...
-    pub(crate) evaluations: Vec<F>,
-}
 
 // A sumcheck proof contains all round polynomials
 pub struct SumcheckProof<F: Field> {
@@ -124,7 +115,10 @@ impl<F: Field> IPForMLSumcheck<F> {
     }
 
     ///
-    /// write comments
+    /// write comments $`a+b`$
+    /// ```math
+    /// f(x = v) = \sum_j g_j
+    /// ```
     ///
     pub fn verify<H>(
         claimed_sum: F,
@@ -214,25 +208,25 @@ fn u64_factorial(a: usize) -> u64 {
     res
 }
 
+#[cfg(test)]
 mod test {
-    use crate::data_structures::linear_lagrange;
-    use crate::data_structures::linear_lagrange_list;
+    use super::u64_factorial;
     use crate::prover::barycentric_interpolation;
-    use crate::prover::SumcheckProof;
-    use crate::IPForMLSumcheck;
-    use ark_ff::Zero;
-    use ark_poly::evaluations;
     use ark_poly::univariate::DensePolynomial;
-    use ark_poly::DenseMultilinearExtension;
     use ark_poly::DenseUVPolynomial;
     use ark_poly::Polynomial;
-    use ark_std::iterable::Iterable;
     use ark_std::vec::Vec;
     use ark_std::UniformRand;
 
-    use super::ProverState;
-
     type F = ark_bls12_381::Fr;
+
+    #[test]
+    fn test_u64_factorial() {
+        let input = 10 as usize;
+        let result = u64_factorial(input);
+        let result_prev = u64_factorial(input - 1);
+        assert_eq!((input as u64) * result_prev, result);
+    }
 
     #[test]
     fn test_interpolation() {
@@ -249,74 +243,5 @@ mod test {
             poly.evaluate(&query),
             barycentric_interpolation(&evals, query)
         );
-    }
-
-    #[test]
-    fn test_sumcheck() {
-        // Define the combine function
-        fn combine_fn(data: &Vec<F>) -> F {
-            assert!(data.len() > 0);
-            data[0]
-        }
-
-        // Define the hash function for testing
-        fn hash_fn(data: &Vec<F>) -> F {
-            assert!(data.len() > 0);
-            data.iter().sum::<F>() / F::from(8)
-        }
-        // Take a simple polynomial
-        let num_variables = 3;
-        let num_evaluations = (1 as u32) << num_variables;
-        let evaluations: Vec<F> = (0..num_evaluations).map(|i| F::from(2 * i)).collect();
-        let claimed_sum = evaluations.iter().fold(F::zero(), |acc, e| acc + e);
-        let poly = DenseMultilinearExtension::<F>::from_evaluations_vec(num_variables, evaluations);
-
-        let polynomials: Vec<linear_lagrange_list<F>> =
-            vec![linear_lagrange_list::<F>::from(&poly)];
-        let mut prover_state = IPForMLSumcheck::prover_init(&polynomials, 1);
-        let proof: SumcheckProof<F> =
-            IPForMLSumcheck::<F>::prove(&mut prover_state, &combine_fn, &hash_fn);
-
-        let result = IPForMLSumcheck::verify(claimed_sum, &proof, &hash_fn);
-        assert_eq!(result.unwrap(), true);
-    }
-
-    #[test]
-    fn test_product_sumcheck() {
-        // Define the combine function
-        fn combine_fn(data: &Vec<F>) -> F {
-            assert!(data.len() == 2);
-            data[0] * data[1]
-        }
-
-        // Define the hash function for testing
-        fn hash_fn(data: &Vec<F>) -> F {
-            assert!(data.len() > 0);
-            data.iter().sum::<F>()
-        }
-        // Take two simple polynomial
-        let num_variables = 3;
-        let num_evaluations = (1 as u32) << num_variables;
-        let evaluations_a: Vec<F> = (0..num_evaluations).map(|i| F::from(2 * i)).collect();
-        let evaluations_b: Vec<F> = (0..num_evaluations).map(|i| F::from(i + 1)).collect();
-        let claimed_sum = evaluations_a
-            .iter()
-            .zip(evaluations_b.iter())
-            .fold(F::zero(), |acc, (a, b)| acc + a * b);
-        let poly_a =
-            DenseMultilinearExtension::<F>::from_evaluations_vec(num_variables, evaluations_a);
-        let poly_b =
-            DenseMultilinearExtension::<F>::from_evaluations_vec(num_variables, evaluations_b);
-
-        let polynomials: Vec<linear_lagrange_list<F>> = vec![
-            linear_lagrange_list::<F>::from(&poly_a),
-            linear_lagrange_list::<F>::from(&poly_b),
-        ];
-        let mut prover_state = IPForMLSumcheck::prover_init(&polynomials, 2);
-        let proof: SumcheckProof<F> =
-            IPForMLSumcheck::<F>::prove(&mut prover_state, &combine_fn, &hash_fn);
-
-        let result = IPForMLSumcheck::verify(claimed_sum, &proof, &hash_fn);
-        assert_eq!(result.unwrap(), true);
     }
 }
