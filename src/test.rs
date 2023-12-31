@@ -1,77 +1,82 @@
 #[cfg(test)]
-use crate::data_structures::{linear_lagrange, linear_lagrange_list};
-use ark_bls12_381::Fr as F;
-use ark_ff::{Field, One};
-use blake2::digest::typenum::assert_type;
-use rand::Rng;
+mod integration_tests {
+    use crate::data_structures::linear_lagrange_list;
+    use crate::prover::ProverState;
+    use crate::prover::SumcheckProof;
+    use crate::IPForMLSumcheck;
+    use ark_ff::Zero;
+    use ark_poly::DenseMultilinearExtension;
+    use ark_std::iterable::Iterable;
+    use ark_std::vec::Vec;
 
-pub fn random_field_element<F: Field>() -> F {
-    let mut rng = rand::thread_rng();
-    let random_u128: u128 = rng.gen();
-    F::from(random_u128)
-}
+    type F = ark_bls12_381::Fr;
 
-//sanity test
-#[test]
-fn test1() {
-    let t1: F = random_field_element();
-    let t2: F = random_field_element();
-    assert_eq!((t1 + t2) * (t1 - t2), t1 * t1 - t2 * t2)
-}
+    #[test]
+    fn test_sumcheck() {
+        // Define the combine function
+        fn combine_fn(data: &Vec<F>) -> F {
+            assert!(data.len() > 0);
+            data[0]
+        }
 
-//linear_lagrange struct test
-#[test]
-fn linear_lagrange_test() {
-    let r1: linear_lagrange<F> =
-        linear_lagrange::new(&random_field_element(), &random_field_element());
-    let r2: linear_lagrange<F> =
-        linear_lagrange::new(&random_field_element(), &random_field_element());
-    let add_linear_lagrange = linear_lagrange::linear_lagrange_add(&r1, &r2);
-    let sub_linear_lagrange = linear_lagrange::linear_lagrange_sub(&r1, &r2);
-    assert_eq!(r1.odd + r2.odd, add_linear_lagrange.odd);
-    assert_eq!(r1.even + r2.even, add_linear_lagrange.even);
-    assert_eq!(r1.odd - r2.odd, sub_linear_lagrange.odd);
-    assert_eq!(r1.even - r2.even, sub_linear_lagrange.even);
-    println!("linear_lagrange Addition tests ok");
-    let mut r3 = r1.clone();
-    let alpha = random_field_element();
-    let mul_linear_lagrange = r3.linear_lagrange_mul_challenge(alpha);
-    assert_eq!(r3.even * (F::one() - alpha), mul_linear_lagrange.even);
-    assert_eq!(r3.odd * alpha, mul_linear_lagrange.odd);
-    println!("linear_lagrange multiplication tests ok");
-    let mut list_lagrange = linear_lagrange_list::new(&2, &vec![r1, r2]);
-    let mut acc_result = linear_lagrange_list::list_accumulator(&mut list_lagrange);
-    assert_eq!(acc_result.odd, add_linear_lagrange.odd);
-    assert_eq!(acc_result.even, add_linear_lagrange.even);
-    println!("linear_lagrange_list operations ok");
-}
+        // Define the hash function for testing
+        fn hash_fn(data: &Vec<F>) -> F {
+            assert!(data.len() > 0);
+            data.iter().sum::<F>() / F::from(8)
+        }
+        // Take a simple polynomial
+        let num_variables = 3;
+        let num_evaluations = (1 as u32) << num_variables;
+        let evaluations: Vec<F> = (0..num_evaluations).map(|i| F::from(2 * i)).collect();
+        let claimed_sum = evaluations.iter().fold(F::zero(), |acc, e| acc + e);
+        let poly = DenseMultilinearExtension::<F>::from_evaluations_vec(num_variables, evaluations);
 
-#[test]
-fn folding_test() {
-    let r1: linear_lagrange<F> =
-        linear_lagrange::new(&random_field_element(), &random_field_element());
-    let r2: linear_lagrange<F> =
-        linear_lagrange::new(&random_field_element(), &random_field_element());
-    let r3: linear_lagrange<F> =
-        linear_lagrange::new(&random_field_element(), &random_field_element());
-    let r4: linear_lagrange<F> =
-        linear_lagrange::new(&random_field_element(), &random_field_element());
-    let alpha: F = random_field_element();
-    //create stryctyre of size 4
-    let round_poly0 =
-        linear_lagrange_list::new(&4, &vec![r1.clone(), r2.clone(), r3.clone(), r4.clone()]);
-    let fold_poly = linear_lagrange_list::fold_list(round_poly0, alpha);
-    let r12fold: linear_lagrange<F> = linear_lagrange {
-        even: linear_lagrange::linear_lagrange_mul_challenge_and_add(&r1, alpha),
-        odd: linear_lagrange::linear_lagrange_mul_challenge_and_add(&r2, alpha),
-    };
-    let r34fold: linear_lagrange<F> = linear_lagrange {
-        even: linear_lagrange::linear_lagrange_mul_challenge_and_add(&r3, alpha),
-        odd: linear_lagrange::linear_lagrange_mul_challenge_and_add(&r4, alpha),
-    };
-    assert_eq!(fold_poly.size, 2);
-    assert_eq!(fold_poly.list[0].even, r12fold.even);
-    assert_eq!(fold_poly.list[0].odd, r12fold.odd);
-    assert_eq!(fold_poly.list[1].even, r34fold.even);
-    assert_eq!(fold_poly.list[1].odd, r34fold.odd);
+        let polynomials: Vec<linear_lagrange_list<F>> =
+            vec![linear_lagrange_list::<F>::from(&poly)];
+        let mut prover_state: ProverState<F> = IPForMLSumcheck::prover_init(&polynomials, 1);
+        let proof: SumcheckProof<F> =
+            IPForMLSumcheck::<F>::prove(&mut prover_state, &combine_fn, &hash_fn);
+
+        let result = IPForMLSumcheck::verify(claimed_sum, &proof, &hash_fn);
+        assert_eq!(result.unwrap(), true);
+    }
+
+    #[test]
+    fn test_product_sumcheck() {
+        // Define the combine function
+        fn combine_fn(data: &Vec<F>) -> F {
+            assert!(data.len() == 2);
+            data[0] * data[1]
+        }
+
+        // Define the hash function for testing
+        fn hash_fn(data: &Vec<F>) -> F {
+            assert!(data.len() > 0);
+            data.iter().sum::<F>()
+        }
+        // Take two simple polynomial
+        let num_variables = 3;
+        let num_evaluations = (1 as u32) << num_variables;
+        let evaluations_a: Vec<F> = (0..num_evaluations).map(|i| F::from(2 * i)).collect();
+        let evaluations_b: Vec<F> = (0..num_evaluations).map(|i| F::from(i + 1)).collect();
+        let claimed_sum = evaluations_a
+            .iter()
+            .zip(evaluations_b.iter())
+            .fold(F::zero(), |acc, (a, b)| acc + a * b);
+        let poly_a =
+            DenseMultilinearExtension::<F>::from_evaluations_vec(num_variables, evaluations_a);
+        let poly_b =
+            DenseMultilinearExtension::<F>::from_evaluations_vec(num_variables, evaluations_b);
+
+        let polynomials: Vec<linear_lagrange_list<F>> = vec![
+            linear_lagrange_list::<F>::from(&poly_a),
+            linear_lagrange_list::<F>::from(&poly_b),
+        ];
+        let mut prover_state: ProverState<F> = IPForMLSumcheck::prover_init(&polynomials, 2);
+        let proof: SumcheckProof<F> =
+            IPForMLSumcheck::<F>::prove(&mut prover_state, &combine_fn, &hash_fn);
+
+        let result = IPForMLSumcheck::verify(claimed_sum, &proof, &hash_fn);
+        assert_eq!(result.unwrap(), true);
+    }
 }
