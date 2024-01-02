@@ -1,5 +1,9 @@
-use crate::{data_structures::linear_lagrange_list, IPForMLSumcheck};
+use crate::{
+    data_structures::{linear_lagrange_list, MatrixPolynomial},
+    IPForMLSumcheck,
+};
 use ark_ff::{batch_inversion_and_mul, Field};
+use ark_poly::DenseMultilinearExtension;
 use ark_std::{log2, vec::Vec};
 #[cfg(feature = "parallel")]
 use rayon::prelude::*;
@@ -104,6 +108,99 @@ impl<F: Field> IPForMLSumcheck<F> {
             // update prover state polynomials
             for j in 0..prover_state.state_polynomials.len() {
                 prover_state.state_polynomials[j].fold_in_half(alpha);
+            }
+        }
+
+        SumcheckProof {
+            num_vars: prover_state.num_vars,
+            degree: r_degree,
+            round_polynomials: r_polys,
+        }
+    }
+
+    pub fn prove_product<H>(
+        prover_state: &mut ProverState<F>,
+        hash_function: &H,
+    ) -> SumcheckProof<F>
+    where
+        H: Fn(&Vec<F>) -> F + Sync,
+    {
+        // Declare r_polys and initialise it with 0s
+        let r_degree = prover_state.max_multiplicands;
+        let mut r_polys: Vec<Vec<F>> = (0..prover_state.num_vars)
+            .map(|_| vec![F::zero(); r_degree + 1])
+            .collect();
+        let previous_alpha = F::zero();
+
+        // Create and fill matrix polynomials.
+        let mut matrix_polynomials: Vec<MatrixPolynomial<F>> =
+            Vec::with_capacity(prover_state.max_multiplicands);
+
+        for i in 0..prover_state.max_multiplicands {
+            matrix_polynomials.push(MatrixPolynomial::from_linear_lagrange_list(
+                &prover_state.state_polynomials[i],
+            ));
+        }
+
+        // This matrix will store challenges in the form:
+        // [ (1-α_1)(1-α_2)...(1-α_m) ]
+        // [ (1-α_1)(1-α_2)...(α_m) ]
+        // [ .. ]
+        // [ .. ]
+        // [ (α_1)(α_2)...(α_m) ]
+        let mut challenge_matrix_polynomial: MatrixPolynomial<F> = MatrixPolynomial::one();
+
+        for round_index in 0..prover_state.num_vars {
+            // Compute R = [P(1) ⊛ P(2) ⊛ ... ⊛ P(m)]
+            let mut round_matrix_polynomial = matrix_polynomials[0].clone();
+            for j in 1..prover_state.max_multiplicands {
+                round_matrix_polynomial =
+                    round_matrix_polynomial.tensor_hadamard_product(&matrix_polynomials[j]);
+            }
+
+            // Collapse R
+            round_matrix_polynomial.collapse();
+
+            for k in 0..(r_degree + 1) as u64 {
+                let scalar_tuple = DenseMultilinearExtension::from_evaluations_vec(
+                    1,
+                    vec![F::ONE - F::from(k), F::from(k)],
+                );
+                let scalar_tuple_matrix = MatrixPolynomial::from_dense_mle(&scalar_tuple);
+
+                // Compute Γ = (Γ_i ⊛ Γ_i ⊛ ... ⊛ Γ_i)
+                // where Γ_i = (Γ_challenges ⊛ Γ_scalar)
+                let gamma_i_matrix =
+                    challenge_matrix_polynomial.tensor_hadamard_product(&scalar_tuple_matrix);
+                let mut gamma_matrix = gamma_i_matrix.clone();
+
+                for _ in 1..prover_state.max_multiplicands {
+                    gamma_matrix = gamma_matrix.tensor_hadamard_product(&gamma_i_matrix);
+                }
+
+                // Ensure Γ has only 1 column
+                assert_eq!(gamma_matrix.no_of_columns, 1);
+
+                // Compute round polynomial evaluation at k
+                r_polys[round_index][k as usize] =
+                    round_matrix_polynomial.dot_product(&gamma_matrix);
+            }
+
+            // generate challenge α_i = H(α_{i-1}, r_poly);
+            let mut preimage: Vec<F> = r_polys[round_index].clone();
+            preimage.insert(0, previous_alpha);
+            let alpha = hash_function(&preimage);
+
+            // Update challenge matrix with new challenge
+            let challenge_tuple =
+                DenseMultilinearExtension::from_evaluations_vec(1, vec![F::ONE - alpha, alpha]);
+            let challenge_tuple_matrix = MatrixPolynomial::from_dense_mle(&challenge_tuple);
+            challenge_matrix_polynomial =
+                challenge_matrix_polynomial.tensor_hadamard_product(&challenge_tuple_matrix);
+
+            // Heighten the witness polynomial matrices
+            for j in 0..prover_state.max_multiplicands {
+                matrix_polynomials[j].heighten();
             }
         }
 

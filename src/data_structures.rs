@@ -1,7 +1,9 @@
+use std::vec;
+
 use ark_std::{fmt, fmt::Formatter, iterable::Iterable};
 
 use ark_ff::Field;
-use ark_poly::{polynomial, DenseMultilinearExtension};
+use ark_poly::DenseMultilinearExtension;
 
 /// Represents a pair of values (p(0), p(1)) where p(.) is a linear univariate polynomial of the form:
 /// p(X) = p(0).(1 - X) + p(1).X
@@ -168,6 +170,14 @@ pub struct MatrixPolynomial<F: Field> {
 }
 
 impl<F: Field> MatrixPolynomial<F> {
+    pub fn one() -> Self {
+        MatrixPolynomial {
+            no_of_rows: 1,
+            no_of_columns: 1,
+            evaluation_rows: vec![vec![F::ONE]],
+        }
+    }
+
     pub fn from_dense_mle(input_polynomial: &DenseMultilinearExtension<F>) -> Self {
         let n = input_polynomial.evaluations.len();
         let mid_point = n / 2;
@@ -208,9 +218,10 @@ impl<F: Field> MatrixPolynomial<F> {
         let end_point = mid_point * 2;
 
         for row_index in 0..(self.no_of_rows / 2) {
-            let vector_to_add = self.evaluation_rows[row_index][mid_point..end_point].to_vec();
-            self.evaluation_rows.push(vector_to_add);
-            self.evaluation_rows[row_index].truncate(mid_point);
+            let vector_to_add = self.evaluation_rows[2 * row_index][mid_point..end_point].to_vec();
+            self.evaluation_rows
+                .insert(2 * row_index + 1, vector_to_add);
+            self.evaluation_rows[2 * row_index].truncate(mid_point);
         }
     }
 
@@ -238,25 +249,34 @@ impl<F: Field> MatrixPolynomial<F> {
         output
     }
 
-    pub fn reduce(&mut self, new_no_of_columns: usize) {
-        assert!(new_no_of_columns >= self.no_of_rows);
-        assert!(self.no_of_rows % new_no_of_columns == 0);
+    pub fn collapse(&mut self) {
+        if self.no_of_columns == 1 {
+            return;
+        } else {
+            self.no_of_columns = 1;
 
-        self.no_of_columns = new_no_of_columns;
-        self.no_of_rows /= new_no_of_columns;
-
-        for i in 0..self.no_of_rows {
-            let new_row: Vec<F> = (0..self.no_of_columns)
-                .map(|j| {
-                    let index: usize = i * new_no_of_columns + j;
-                    self.evaluation_rows[index]
-                        .iter()
-                        .fold(F::zero(), |sum, &r| sum + r)
-                })
-                .collect();
-            self.evaluation_rows[i] = new_row;
+            for i in 0..self.no_of_rows {
+                let new_value: F = self.evaluation_rows[i]
+                    .iter()
+                    .fold(F::zero(), |sum, &r| sum + r);
+                self.evaluation_rows[i] = vec![new_value];
+            }
         }
-        self.evaluation_rows.truncate(self.no_of_rows);
+    }
+
+    pub fn dot_product(&self, rhs: &Self) -> F {
+        assert_eq!(self.no_of_columns, rhs.no_of_columns);
+        assert_eq!(self.no_of_rows, rhs.no_of_rows);
+
+        self.evaluation_rows
+            .iter()
+            .zip(rhs.evaluation_rows.iter())
+            .fold(F::zero(), |acc, (l_row, r_row)| {
+                acc + l_row
+                    .iter()
+                    .zip(r_row.iter())
+                    .fold(F::zero(), |sum, (&l_val, &r_val)| sum + l_val * r_val)
+            })
     }
 }
 
@@ -406,8 +426,8 @@ mod test {
         // Test if heighten works as intended
         matrix_poly.heighten();
         assert_eq!(matrix_poly.evaluation_rows[0], poly.evaluations[0..2]);
-        assert_eq!(matrix_poly.evaluation_rows[1], poly.evaluations[4..6]);
-        assert_eq!(matrix_poly.evaluation_rows[2], poly.evaluations[2..4]);
+        assert_eq!(matrix_poly.evaluation_rows[1], poly.evaluations[2..4]);
+        assert_eq!(matrix_poly.evaluation_rows[2], poly.evaluations[4..6]);
         assert_eq!(matrix_poly.evaluation_rows[3], poly.evaluations[6..8]);
     }
 
@@ -453,7 +473,7 @@ mod test {
     }
 
     #[test]
-    fn test_matrix_polynomial_reduce() {
+    fn test_matrix_polynomial_collapse() {
         let mut rng = rand::thread_rng();
         let poly = DenseMultilinearExtension::<F>::rand(4, &mut rng);
         let mut matrix_poly = MatrixPolynomial::from_dense_mle(&poly);
@@ -461,20 +481,14 @@ mod test {
         // Reduce number of columns by half
         matrix_poly.heighten();
 
-        // Apply reduce function
-        matrix_poly.reduce(2);
+        // Apply collapse function
+        matrix_poly.collapse();
 
-        assert_eq!(matrix_poly.no_of_columns, 2);
-        assert_eq!(matrix_poly.no_of_rows, 2);
+        assert_eq!(matrix_poly.no_of_columns, 1);
+        assert_eq!(matrix_poly.no_of_rows, 4);
         assert_eq!(
             matrix_poly.evaluation_rows[0][0],
             poly.evaluations[0..4]
-                .iter()
-                .fold(F::zero(), |acc, e| acc + e)
-        );
-        assert_eq!(
-            matrix_poly.evaluation_rows[0][1],
-            poly.evaluations[8..12]
                 .iter()
                 .fold(F::zero(), |acc, e| acc + e)
         );
@@ -485,10 +499,33 @@ mod test {
                 .fold(F::zero(), |acc, e| acc + e)
         );
         assert_eq!(
-            matrix_poly.evaluation_rows[1][1],
+            matrix_poly.evaluation_rows[2][0],
+            poly.evaluations[8..12]
+                .iter()
+                .fold(F::zero(), |acc, e| acc + e)
+        );
+        assert_eq!(
+            matrix_poly.evaluation_rows[3][0],
             poly.evaluations[12..16]
                 .iter()
                 .fold(F::zero(), |acc, e| acc + e)
         );
+    }
+
+    #[test]
+    fn test_matrix_polynomial_dot_product() {
+        let mut rng = rand::thread_rng();
+        let poly_a = DenseMultilinearExtension::<F>::rand(4, &mut rng);
+        let matrix_poly_a = MatrixPolynomial::from_dense_mle(&poly_a);
+        let poly_b = DenseMultilinearExtension::<F>::rand(4, &mut rng);
+        let matrix_poly_b = MatrixPolynomial::from_dense_mle(&poly_b);
+
+        let computed = matrix_poly_a.dot_product(&matrix_poly_b);
+        let expected = poly_a
+            .evaluations
+            .iter()
+            .zip(poly_b.iter())
+            .fold(F::zero(), |acc, (a, b)| acc + a * b);
+        assert_eq!(computed, expected);
     }
 }
