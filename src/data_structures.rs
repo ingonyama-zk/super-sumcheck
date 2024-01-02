@@ -1,7 +1,7 @@
-use ark_std::{fmt, fmt::Formatter};
+use ark_std::{fmt, fmt::Formatter, iterable::Iterable};
 
 use ark_ff::Field;
-use ark_poly::DenseMultilinearExtension;
+use ark_poly::{polynomial, DenseMultilinearExtension};
 
 /// Represents a pair of values (p(0), p(1)) where p(.) is a linear univariate polynomial of the form:
 /// p(X) = p(0).(1 - X) + p(1).X
@@ -157,12 +157,136 @@ impl<F: Field> fmt::Debug for linear_lagrange_list<F> {
     }
 }
 
+///
+/// For sumcheck prover (algorithm 2), we need to represent polynomial evaluations in a matrix form.
+///
+#[derive(Clone, PartialEq, Eq)]
+pub struct MatrixPolynomial<F: Field> {
+    pub no_of_rows: usize,
+    pub no_of_columns: usize,
+    pub evaluation_rows: Vec<Vec<F>>,
+}
+
+impl<F: Field> MatrixPolynomial<F> {
+    pub fn from_dense_mle(input_polynomial: &DenseMultilinearExtension<F>) -> Self {
+        let n = input_polynomial.evaluations.len();
+        let mid_point = n / 2;
+        let (first_half, second_half) = input_polynomial.evaluations.split_at(mid_point);
+
+        MatrixPolynomial {
+            no_of_rows: 2,
+            no_of_columns: mid_point,
+            evaluation_rows: vec![first_half.to_vec(), second_half.to_vec()],
+        }
+    }
+
+    pub fn from_linear_lagrange_list(input_polynomial: &linear_lagrange_list<F>) -> Self {
+        let n_by_2 = input_polynomial.size;
+        MatrixPolynomial {
+            no_of_rows: 2,
+            no_of_columns: n_by_2,
+            evaluation_rows: vec![
+                input_polynomial
+                    .list
+                    .iter()
+                    .map(|ll_instance| ll_instance.even)
+                    .collect(),
+                input_polynomial
+                    .list
+                    .iter()
+                    .map(|ll_instance| ll_instance.odd)
+                    .collect(),
+            ],
+        }
+    }
+
+    pub fn heighten(&mut self) {
+        // Update the dimensions of the original matrix
+        self.no_of_rows *= 2;
+        self.no_of_columns /= 2;
+        let mid_point = self.no_of_columns;
+        let end_point = mid_point * 2;
+
+        for row_index in 0..(self.no_of_rows / 2) {
+            let vector_to_add = self.evaluation_rows[row_index][mid_point..end_point].to_vec();
+            self.evaluation_rows.push(vector_to_add);
+            self.evaluation_rows[row_index].truncate(mid_point);
+        }
+    }
+
+    pub fn tensor_hadamard_product(&self, rhs: &MatrixPolynomial<F>) -> MatrixPolynomial<F> {
+        assert_eq!(self.no_of_columns, rhs.no_of_columns);
+
+        let mut output = MatrixPolynomial {
+            no_of_rows: self.no_of_rows * rhs.no_of_rows,
+            no_of_columns: self.no_of_columns,
+            evaluation_rows: Vec::with_capacity(self.no_of_rows * rhs.no_of_rows),
+        };
+
+        for i in 0..self.no_of_rows {
+            for j in 0..rhs.no_of_rows {
+                let left_vec: &Vec<F> = &self.evaluation_rows[i];
+                let right_vec: &Vec<F> = &rhs.evaluation_rows[j];
+                let left_right_hadamard: Vec<F> = left_vec
+                    .iter()
+                    .zip(right_vec.iter())
+                    .map(|(&l, &r)| l * r)
+                    .collect();
+                output.evaluation_rows.push(left_right_hadamard);
+            }
+        }
+        output
+    }
+
+    pub fn reduce(&mut self, new_no_of_columns: usize) {
+        assert!(new_no_of_columns >= self.no_of_rows);
+        assert!(self.no_of_rows % new_no_of_columns == 0);
+
+        self.no_of_columns = new_no_of_columns;
+        self.no_of_rows /= new_no_of_columns;
+
+        for i in 0..self.no_of_rows {
+            let new_row: Vec<F> = (0..self.no_of_columns)
+                .map(|j| {
+                    let index: usize = i * new_no_of_columns + j;
+                    self.evaluation_rows[index]
+                        .iter()
+                        .fold(F::zero(), |sum, &r| sum + r)
+                })
+                .collect();
+            self.evaluation_rows[i] = new_row;
+        }
+        self.evaluation_rows.truncate(self.no_of_rows);
+    }
+}
+
+impl<F: Field> fmt::Debug for MatrixPolynomial<F> {
+    fn fmt(&self, f: &mut Formatter<'_>) -> Result<(), fmt::Error> {
+        write!(
+            f,
+            "MatrixPolynomial(cols = {}, rows = {}, evaluations:\n",
+            self.no_of_columns, self.no_of_rows
+        )?;
+        for i in 0..self.evaluation_rows.len() {
+            write!(f, "[")?;
+            for j in 0..self.evaluation_rows[0].len() {
+                write!(f, "{} ", self.evaluation_rows[i][j])?;
+            }
+            write!(f, "]\n")?;
+        }
+        Ok(())
+    }
+}
+
 #[cfg(test)]
 mod test {
     use crate::data_structures::{linear_lagrange, linear_lagrange_list};
     use ark_bls12_381::Fr as F;
     use ark_ff::{Field, Zero};
+    use ark_poly::{DenseMultilinearExtension, MultilinearExtension};
     use rand::Rng;
+
+    use super::MatrixPolynomial;
 
     pub fn random_field_element<F: Field>() -> F {
         let mut rng = rand::thread_rng();
@@ -258,5 +382,113 @@ mod test {
             assert_eq!(lagrange_list.list[i].even, expected_even);
             assert_eq!(lagrange_list.list[i].odd, expected_odd);
         }
+    }
+
+    #[test]
+    fn test_matrix_polynomial_heighten() {
+        let mut rng = rand::thread_rng();
+        let poly = DenseMultilinearExtension::<F>::rand(3, &mut rng);
+        let mut matrix_poly = MatrixPolynomial::from_dense_mle(&poly);
+        let mid_point = poly.evaluations.len() / 2;
+        let end_point = poly.evaluations.len();
+
+        assert_eq!(matrix_poly.no_of_rows, 2);
+        assert_eq!(matrix_poly.no_of_columns, mid_point);
+        assert_eq!(
+            matrix_poly.evaluation_rows[0],
+            poly.evaluations[0..mid_point]
+        );
+        assert_eq!(
+            matrix_poly.evaluation_rows[1],
+            poly.evaluations[mid_point..end_point]
+        );
+
+        // Test if heighten works as intended
+        matrix_poly.heighten();
+        assert_eq!(matrix_poly.evaluation_rows[0], poly.evaluations[0..2]);
+        assert_eq!(matrix_poly.evaluation_rows[1], poly.evaluations[4..6]);
+        assert_eq!(matrix_poly.evaluation_rows[2], poly.evaluations[2..4]);
+        assert_eq!(matrix_poly.evaluation_rows[3], poly.evaluations[6..8]);
+    }
+
+    pub fn vector_hadamard(a: &Vec<F>, b: &Vec<F>) -> Vec<F> {
+        assert_eq!(a.len(), b.len());
+        a.iter().zip(b.iter()).map(|(ai, bi)| ai * bi).collect()
+    }
+
+    #[test]
+    fn test_matrix_polynomial_tensor_hadamard() {
+        let mut rng = rand::thread_rng();
+        let poly_a = DenseMultilinearExtension::<F>::rand(3, &mut rng);
+        let matrix_poly_a = MatrixPolynomial::from_dense_mle(&poly_a);
+        let poly_b = DenseMultilinearExtension::<F>::rand(4, &mut rng);
+        let mut matrix_poly_b = MatrixPolynomial::from_dense_mle(&poly_b);
+
+        // Reduce number of columns of b by half
+        matrix_poly_b.heighten();
+
+        // Perform tensor-hadamard product of a and b
+        let matrix_poly_c = matrix_poly_a.tensor_hadamard_product(&matrix_poly_b);
+
+        assert_eq!(matrix_poly_b.no_of_columns, matrix_poly_a.no_of_columns);
+        assert_eq!(matrix_poly_c.no_of_columns, matrix_poly_a.no_of_columns);
+        assert_eq!(
+            matrix_poly_c.no_of_rows,
+            matrix_poly_a.no_of_rows * matrix_poly_b.no_of_rows
+        );
+
+        for i in 0..matrix_poly_b.no_of_rows {
+            let a0_bi = vector_hadamard(
+                &matrix_poly_a.evaluation_rows[0],
+                &matrix_poly_b.evaluation_rows[i],
+            );
+            let a1_bi = vector_hadamard(
+                &matrix_poly_a.evaluation_rows[1],
+                &matrix_poly_b.evaluation_rows[i],
+            );
+            let offset = matrix_poly_b.no_of_rows;
+            assert_eq!(matrix_poly_c.evaluation_rows[i], a0_bi);
+            assert_eq!(matrix_poly_c.evaluation_rows[i + offset], a1_bi);
+        }
+    }
+
+    #[test]
+    fn test_matrix_polynomial_reduce() {
+        let mut rng = rand::thread_rng();
+        let poly = DenseMultilinearExtension::<F>::rand(4, &mut rng);
+        let mut matrix_poly = MatrixPolynomial::from_dense_mle(&poly);
+
+        // Reduce number of columns by half
+        matrix_poly.heighten();
+
+        // Apply reduce function
+        matrix_poly.reduce(2);
+
+        assert_eq!(matrix_poly.no_of_columns, 2);
+        assert_eq!(matrix_poly.no_of_rows, 2);
+        assert_eq!(
+            matrix_poly.evaluation_rows[0][0],
+            poly.evaluations[0..4]
+                .iter()
+                .fold(F::zero(), |acc, e| acc + e)
+        );
+        assert_eq!(
+            matrix_poly.evaluation_rows[0][1],
+            poly.evaluations[8..12]
+                .iter()
+                .fold(F::zero(), |acc, e| acc + e)
+        );
+        assert_eq!(
+            matrix_poly.evaluation_rows[1][0],
+            poly.evaluations[4..8]
+                .iter()
+                .fold(F::zero(), |acc, e| acc + e)
+        );
+        assert_eq!(
+            matrix_poly.evaluation_rows[1][1],
+            poly.evaluations[12..16]
+                .iter()
+                .fold(F::zero(), |acc, e| acc + e)
+        );
     }
 }
