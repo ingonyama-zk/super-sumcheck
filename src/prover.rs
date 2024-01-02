@@ -1,5 +1,5 @@
 use crate::{
-    data_structures::{linear_lagrange_list, MatrixPolynomial},
+    data_structures::{LinearLagrangeList, MatrixPolynomial},
     IPForMLSumcheck,
 };
 use ark_ff::{batch_inversion_and_mul, Field};
@@ -20,7 +20,7 @@ pub struct ProverState<F: Field> {
     /// sampled randomness (for each round) given by the verifier
     pub randomness: Vec<F>,
     /// Stores a list of multilinear extensions
-    pub state_polynomials: Vec<linear_lagrange_list<F>>,
+    pub state_polynomials: Vec<LinearLagrangeList<F>>,
     /// Number of variables
     pub num_vars: usize,
     /// Max number of multiplicands in a product
@@ -31,7 +31,7 @@ pub struct ProverState<F: Field> {
 
 impl<F: Field> IPForMLSumcheck<F> {
     pub fn prover_init(
-        polynomials: &Vec<linear_lagrange_list<F>>,
+        polynomials: &Vec<LinearLagrangeList<F>>,
         sumcheck_poly_degree: usize,
     ) -> ProverState<F> {
         // sanity check 1: no polynomials case must not be allowed.

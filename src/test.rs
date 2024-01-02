@@ -1,6 +1,6 @@
 #[cfg(test)]
 mod integration_tests {
-    use crate::data_structures::linear_lagrange_list;
+    use crate::data_structures::LinearLagrangeList;
     use crate::prover::ProverState;
     use crate::prover::SumcheckProof;
     use crate::IPForMLSumcheck;
@@ -32,8 +32,7 @@ mod integration_tests {
         let claimed_sum = evaluations.iter().fold(F::zero(), |acc, e| acc + e);
         let poly = DenseMultilinearExtension::<F>::from_evaluations_vec(num_variables, evaluations);
 
-        let polynomials: Vec<linear_lagrange_list<F>> =
-            vec![linear_lagrange_list::<F>::from(&poly)];
+        let polynomials: Vec<LinearLagrangeList<F>> = vec![LinearLagrangeList::<F>::from(&poly)];
         let mut prover_state: ProverState<F> = IPForMLSumcheck::prover_init(&polynomials, 1);
         let proof: SumcheckProof<F> =
             IPForMLSumcheck::<F>::prove(&mut prover_state, &combine_fn, &hash_fn);
@@ -69,9 +68,9 @@ mod integration_tests {
         let poly_b =
             DenseMultilinearExtension::<F>::from_evaluations_vec(num_variables, evaluations_b);
 
-        let polynomials: Vec<linear_lagrange_list<F>> = vec![
-            linear_lagrange_list::<F>::from(&poly_a),
-            linear_lagrange_list::<F>::from(&poly_b),
+        let polynomials: Vec<LinearLagrangeList<F>> = vec![
+            LinearLagrangeList::<F>::from(&poly_a),
+            LinearLagrangeList::<F>::from(&poly_b),
         ];
         let mut prover_state: ProverState<F> = IPForMLSumcheck::prover_init(&polynomials, 2);
         let proof: SumcheckProof<F> =
@@ -117,9 +116,9 @@ mod integration_tests {
         let poly_b =
             DenseMultilinearExtension::<F>::from_evaluations_vec(num_variables, evaluations_b);
 
-        let polynomials: Vec<linear_lagrange_list<F>> = vec![
-            linear_lagrange_list::<F>::from(&poly_a),
-            linear_lagrange_list::<F>::from(&poly_b),
+        let polynomials: Vec<LinearLagrangeList<F>> = vec![
+            LinearLagrangeList::<F>::from(&poly_a),
+            LinearLagrangeList::<F>::from(&poly_b),
         ];
 
         let mut prover_state: ProverState<F> = IPForMLSumcheck::prover_init(&polynomials, 2);

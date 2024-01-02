@@ -8,9 +8,9 @@ use ark_poly::DenseMultilinearExtension;
 /// Represents a pair of values (p(0), p(1)) where p(.) is a linear univariate polynomial of the form:
 /// p(X) = p(0).(1 - X) + p(1).X
 /// where X is any field element. So we have:
-/// p(0) = `linear_lagrange.even`, p(1) = `linear_lagrange.odd`
+/// p(0) = `LinearLagrange.even`, p(1) = `LinearLagrange.odd`
 #[derive(Clone, PartialEq, Eq)]
-pub struct linear_lagrange<F: Field> {
+pub struct LinearLagrange<F: Field> {
     pub even: F,
     pub odd: F,
 }
@@ -22,35 +22,35 @@ pub struct linear_lagrange<F: Field> {
 /// X_1 = 0 ==> p(i)
 /// X_1 = 1 ==> p(n/2 + i)
 /// This is particularly useful while working with sumcheck round computations.
-pub struct linear_lagrange_list<F: Field> {
+pub struct LinearLagrangeList<F: Field> {
     pub size: usize,
-    pub list: Vec<linear_lagrange<F>>,
+    pub list: Vec<LinearLagrange<F>>,
 }
 
-impl<F: Field> linear_lagrange<F> {
-    /// Define a new linear_lagrange instance: p(0).(1-X) + p(1).X as
+impl<F: Field> LinearLagrange<F> {
+    /// Define a new LinearLagrange instance: p(0).(1-X) + p(1).X as
     /// $`[e, o] \equiv [p(0), p(1)]`$
-    pub fn new(even: &F, odd: &F) -> linear_lagrange<F> {
-        linear_lagrange {
+    pub fn new(even: &F, odd: &F) -> LinearLagrange<F> {
+        LinearLagrange {
             even: *even,
             odd: *odd,
         }
     }
-    /// Adds 2 linear_lagrange instances and outputs a resulting linear_lagrange instance.
+    /// Adds 2 LinearLagrange instances and outputs a resulting LinearLagrange instance.
     /// this is for instance the atomic operation in each step, and this should be parallelized
     /// per pair of instances.
-    pub fn add(&self, other: &linear_lagrange<F>) -> linear_lagrange<F> {
-        linear_lagrange {
+    pub fn add(&self, other: &LinearLagrange<F>) -> LinearLagrange<F> {
+        LinearLagrange {
             even: self.even + other.even,
             odd: self.odd + other.odd,
         }
     }
 
-    /// Subtracts 2 linear_lagrange instances and outputs a new linear_lagrange instance
-    pub fn sub(&self, other: &linear_lagrange<F>) -> linear_lagrange<F> {
+    /// Subtracts 2 LinearLagrange instances and outputs a new LinearLagrange instance
+    pub fn sub(&self, other: &LinearLagrange<F>) -> LinearLagrange<F> {
         let even_result: F = self.even - other.even;
         let odd_result: F = self.odd - other.odd;
-        linear_lagrange {
+        LinearLagrange {
             even: even_result,
             odd: odd_result,
         }
@@ -62,42 +62,42 @@ impl<F: Field> linear_lagrange<F> {
     }
 }
 
-impl<F: Field> linear_lagrange_list<F> {
+impl<F: Field> LinearLagrangeList<F> {
     /// Create a new list from evaluations of a dense MLE polynomial
-    pub fn from(polynomial: &DenseMultilinearExtension<F>) -> linear_lagrange_list<F> {
+    pub fn from(polynomial: &DenseMultilinearExtension<F>) -> LinearLagrangeList<F> {
         let list_size = polynomial.evaluations.len() / 2;
         let poly_list = (0..list_size)
             .map(|i| {
-                linear_lagrange::new(
+                LinearLagrange::new(
                     &polynomial.evaluations[i],
                     &polynomial.evaluations[i + list_size],
                 )
             })
-            .collect::<Vec<linear_lagrange<F>>>();
-        linear_lagrange_list {
+            .collect::<Vec<LinearLagrange<F>>>();
+        LinearLagrangeList {
             size: list_size,
             list: poly_list,
         }
     }
 
     /// Create a new initialized list (create with vectors specified)
-    pub fn new(list_size: &usize, poly_list: &Vec<linear_lagrange<F>>) -> linear_lagrange_list<F> {
-        linear_lagrange_list {
+    pub fn new(list_size: &usize, poly_list: &Vec<LinearLagrange<F>>) -> LinearLagrangeList<F> {
+        LinearLagrangeList {
             size: *list_size,
             list: poly_list.to_vec(),
         }
     }
     /// Create a new un-initialized list (create with zero vectors)    
-    pub fn new_uninitialized(size: &usize) -> linear_lagrange_list<F> {
-        let vec = linear_lagrange::new(&F::zero(), &F::zero());
-        linear_lagrange_list {
+    pub fn new_uninitialized(size: &usize) -> LinearLagrangeList<F> {
+        let vec = LinearLagrange::new(&F::zero(), &F::zero());
+        LinearLagrangeList {
             size: *size,
             list: vec![vec; *size],
         }
     }
     /// Accumulates the even and odd parts in a list
-    pub fn list_accumulator(self: &linear_lagrange_list<F>) -> linear_lagrange<F> {
-        let mut acc: linear_lagrange<F> = linear_lagrange::new(&F::zero(), &F::zero());
+    pub fn list_accumulator(self: &LinearLagrangeList<F>) -> LinearLagrange<F> {
+        let mut acc: LinearLagrange<F> = LinearLagrange::new(&F::zero(), &F::zero());
         for i in 0..=self.size - 1 {
             acc = acc.add(&self.list[i]);
         }
@@ -105,7 +105,7 @@ impl<F: Field> linear_lagrange_list<F> {
     }
 
     /// Folds a linear lagrange list in half according to the sumcheck protocol
-    pub fn fold_in_half(self: &mut linear_lagrange_list<F>, challenge: F) {
+    pub fn fold_in_half(self: &mut LinearLagrangeList<F>, challenge: F) {
         assert_ne!(self.size, 0);
         for linear_lagrange_instance in &mut self.list {
             linear_lagrange_instance.even *= F::one() - challenge;
@@ -121,23 +121,23 @@ impl<F: Field> linear_lagrange_list<F> {
     }
 
     // Takes a structure and generates a new structure half the size (to add conditions)
-    pub fn fold_list(input: &linear_lagrange_list<F>, challenge: F) -> linear_lagrange_list<F> {
+    pub fn fold_list(input: &LinearLagrangeList<F>, challenge: F) -> LinearLagrangeList<F> {
         assert_ne!(input.size, 0);
-        let mut poly_list: Vec<linear_lagrange<F>> = Vec::new();
+        let mut poly_list: Vec<LinearLagrange<F>> = Vec::new();
         for i in (0..=input.size - 1).step_by(2) {
-            poly_list.push(linear_lagrange {
-                even: linear_lagrange::evaluate_at(&input.list[i], challenge),
-                odd: linear_lagrange::evaluate_at(&input.list[i + 1], challenge),
+            poly_list.push(LinearLagrange {
+                even: LinearLagrange::evaluate_at(&input.list[i], challenge),
+                odd: LinearLagrange::evaluate_at(&input.list[i + 1], challenge),
             });
         }
-        linear_lagrange_list {
+        LinearLagrangeList {
             size: poly_list.len(),
             list: poly_list,
         }
     }
 }
 
-impl<F: Field> fmt::Debug for linear_lagrange<F> {
+impl<F: Field> fmt::Debug for LinearLagrange<F> {
     fn fmt(&self, f: &mut Formatter<'_>) -> Result<(), fmt::Error> {
         write!(
             f,
@@ -148,7 +148,7 @@ impl<F: Field> fmt::Debug for linear_lagrange<F> {
     }
 }
 
-impl<F: Field> fmt::Debug for linear_lagrange_list<F> {
+impl<F: Field> fmt::Debug for LinearLagrangeList<F> {
     fn fmt(&self, f: &mut Formatter<'_>) -> Result<(), fmt::Error> {
         write!(f, "LinearLagrangeList(size = {}, list = [", self.size)?;
         for i in 0..self.list.len() {
@@ -190,7 +190,7 @@ impl<F: Field> MatrixPolynomial<F> {
         }
     }
 
-    pub fn from_linear_lagrange_list(input_polynomial: &linear_lagrange_list<F>) -> Self {
+    pub fn from_linear_lagrange_list(input_polynomial: &LinearLagrangeList<F>) -> Self {
         let n_by_2 = input_polynomial.size;
         MatrixPolynomial {
             no_of_rows: 2,
@@ -300,7 +300,7 @@ impl<F: Field> fmt::Debug for MatrixPolynomial<F> {
 
 #[cfg(test)]
 mod test {
-    use crate::data_structures::{linear_lagrange, linear_lagrange_list};
+    use crate::data_structures::{LinearLagrange, LinearLagrangeList};
     use ark_bls12_381::Fr as F;
     use ark_ff::{Field, Zero};
     use ark_poly::{DenseMultilinearExtension, MultilinearExtension};
@@ -314,14 +314,14 @@ mod test {
         F::from(random_u128)
     }
 
-    pub fn get_random_linear_lagrange<F: Field>() -> linear_lagrange<F> {
-        linear_lagrange::new(&random_field_element(), &random_field_element())
+    pub fn get_random_linear_lagrange<F: Field>() -> LinearLagrange<F> {
+        LinearLagrange::new(&random_field_element(), &random_field_element())
     }
 
     #[test]
     fn test_linear_lagrange_add() {
-        let r1: linear_lagrange<F> = get_random_linear_lagrange();
-        let r2: linear_lagrange<F> = get_random_linear_lagrange();
+        let r1: LinearLagrange<F> = get_random_linear_lagrange();
+        let r2: LinearLagrange<F> = get_random_linear_lagrange();
         let addition = r1.add(&r2);
         assert_eq!(r1.odd + r2.odd, addition.odd);
         assert_eq!(r1.even + r2.even, addition.even);
@@ -329,8 +329,8 @@ mod test {
 
     #[test]
     fn test_linear_lagrange_sub() {
-        let r1: linear_lagrange<F> = get_random_linear_lagrange();
-        let r2: linear_lagrange<F> = get_random_linear_lagrange();
+        let r1: LinearLagrange<F> = get_random_linear_lagrange();
+        let r2: LinearLagrange<F> = get_random_linear_lagrange();
         let subtraction = r1.sub(&r2);
         assert_eq!(r1.odd - r2.odd, subtraction.odd);
         assert_eq!(r1.even - r2.even, subtraction.even);
@@ -341,10 +341,10 @@ mod test {
         let list_size = 10;
         let linear_lagrange_vec = (0..list_size)
             .map(|_| get_random_linear_lagrange::<F>())
-            .collect::<Vec<linear_lagrange<F>>>();
-        let lagrange_list: linear_lagrange_list<F> =
-            linear_lagrange_list::new(&list_size, &linear_lagrange_vec);
-        let accumulated = linear_lagrange_list::list_accumulator(&lagrange_list);
+            .collect::<Vec<LinearLagrange<F>>>();
+        let lagrange_list: LinearLagrangeList<F> =
+            LinearLagrangeList::new(&list_size, &linear_lagrange_vec);
+        let accumulated = LinearLagrangeList::list_accumulator(&lagrange_list);
 
         let expected_even_sum = linear_lagrange_vec
             .iter()
@@ -363,12 +363,12 @@ mod test {
         let list_size = 8;
         let linear_lagrange_vec = (0..list_size)
             .map(|_| get_random_linear_lagrange::<F>())
-            .collect::<Vec<linear_lagrange<F>>>();
-        let lagrange_list: linear_lagrange_list<F> =
-            linear_lagrange_list::new(&list_size, &linear_lagrange_vec);
+            .collect::<Vec<LinearLagrange<F>>>();
+        let lagrange_list: LinearLagrangeList<F> =
+            LinearLagrangeList::new(&list_size, &linear_lagrange_vec);
 
         let alpha: F = random_field_element();
-        let folded_list = linear_lagrange_list::fold_list(&lagrange_list, alpha);
+        let folded_list = LinearLagrangeList::fold_list(&lagrange_list, alpha);
 
         for i in (0..lagrange_list.size).step_by(2) {
             let expected_even = lagrange_list.list[i].evaluate_at(alpha);
@@ -383,9 +383,9 @@ mod test {
         let list_size = 8;
         let linear_lagrange_vec = (0..list_size)
             .map(|_| get_random_linear_lagrange::<F>())
-            .collect::<Vec<linear_lagrange<F>>>();
-        let mut lagrange_list: linear_lagrange_list<F> =
-            linear_lagrange_list::new(&list_size, &linear_lagrange_vec);
+            .collect::<Vec<LinearLagrange<F>>>();
+        let mut lagrange_list: LinearLagrangeList<F> =
+            LinearLagrangeList::new(&list_size, &linear_lagrange_vec);
         let size_before = lagrange_list.size;
 
         let alpha: F = random_field_element();
