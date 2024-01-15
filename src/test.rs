@@ -7,7 +7,9 @@ mod integration_tests {
     use ark_ff::BigInt;
     use ark_ff::Zero;
     use ark_poly::DenseMultilinearExtension;
+    use ark_poly::MultilinearExtension;
     use ark_std::iterable::Iterable;
+    use ark_std::test_rng;
     use ark_std::vec::Vec;
 
     type F = ark_bls12_381::Fr;
@@ -85,6 +87,50 @@ mod integration_tests {
 
         let result_dup = IPForMLSumcheck::verify(claimed_sum, &proof_dup, &hash_fn);
         assert_eq!(result_dup.unwrap(), true);
+    }
+
+    #[test]
+    fn test_r1cs_sumcheck() {
+        // Define the combine function for r1cs: (a * b * e) - (c * e) = 0
+        fn combine_fn(data: &Vec<F>) -> F {
+            assert!(data.len() == 4);
+            data[0] * data[1] * data[3] - data[2] * data[3]
+        }
+
+        // Define the hash function for testing
+        fn hash_fn(data: &Vec<F>) -> F {
+            assert!(data.len() > 0);
+            data.iter().sum::<F>()
+        }
+        // Take four simple polynomial
+        let mut rng = test_rng();
+        const NV: usize = 10;
+        let poly_a: DenseMultilinearExtension<F> = DenseMultilinearExtension::rand(NV, &mut rng);
+        let poly_b: DenseMultilinearExtension<F> = DenseMultilinearExtension::rand(NV, &mut rng);
+        let poly_c: DenseMultilinearExtension<F> = DenseMultilinearExtension::from_evaluations_vec(
+            NV,
+            poly_a
+                .evaluations
+                .iter()
+                .zip(poly_b.evaluations.iter())
+                .map(|(a, b)| a * b)
+                .collect(),
+        );
+        let poly_e: DenseMultilinearExtension<F> = DenseMultilinearExtension::rand(NV, &mut rng);
+        let claimed_sum: F = F::zero();
+
+        let polynomials: Vec<LinearLagrangeList<F>> = vec![
+            LinearLagrangeList::<F>::from(&poly_a),
+            LinearLagrangeList::<F>::from(&poly_b),
+            LinearLagrangeList::<F>::from(&poly_c),
+            LinearLagrangeList::<F>::from(&poly_e),
+        ];
+        let mut prover_state: ProverState<F> = IPForMLSumcheck::prover_init(&polynomials, 3);
+        let proof: SumcheckProof<F> =
+            IPForMLSumcheck::<F>::prove(&mut prover_state, &combine_fn, &hash_fn);
+
+        let result = IPForMLSumcheck::verify(claimed_sum, &proof, &hash_fn);
+        assert_eq!(result.unwrap(), true);
     }
 
     #[test]
