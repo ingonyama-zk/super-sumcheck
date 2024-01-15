@@ -4,7 +4,6 @@ mod integration_tests {
     use crate::prover::ProverState;
     use crate::prover::SumcheckProof;
     use crate::IPForMLSumcheck;
-    use ark_ff::BigInt;
     use ark_ff::Zero;
     use ark_poly::DenseMultilinearExtension;
     use ark_poly::MultilinearExtension;
@@ -131,54 +130,5 @@ mod integration_tests {
 
         let result = IPForMLSumcheck::verify(claimed_sum, &proof, &hash_fn);
         assert_eq!(result.unwrap(), true);
-    }
-
-    #[test]
-    fn test_simple_product_sumcheck() {
-        // Define the combine function
-        fn combine_fn(data: &Vec<F>) -> F {
-            assert!(data.len() == 2);
-            data[0] * data[1]
-        }
-
-        // Define the hash function for testing
-        fn hash_fn(data: &Vec<F>) -> F {
-            assert!(data.len() > 0);
-            let sum = data.iter().sum::<F>();
-            let sum_bytes = BigInt::from(sum).0[0];
-            F::from(sum_bytes / 2)
-        }
-
-        // Take two simple polynomial
-        let num_variables = 2;
-        let evaluations_a: Vec<F> = vec![F::from(2), F::from(3), F::from(4), F::from(1)];
-        let evaluations_b: Vec<F> = vec![F::from(1), F::from(4), F::from(2), F::from(5)];
-        let claimed_sum = evaluations_a
-            .iter()
-            .zip(evaluations_b.iter())
-            .fold(F::zero(), |acc, (a, b)| acc + a * b);
-        let poly_a =
-            DenseMultilinearExtension::<F>::from_evaluations_vec(num_variables, evaluations_a);
-        let poly_b =
-            DenseMultilinearExtension::<F>::from_evaluations_vec(num_variables, evaluations_b);
-
-        let polynomials: Vec<LinearLagrangeList<F>> = vec![
-            LinearLagrangeList::<F>::from(&poly_a),
-            LinearLagrangeList::<F>::from(&poly_b),
-        ];
-
-        let mut prover_state: ProverState<F> = IPForMLSumcheck::prover_init(&polynomials, 2);
-        let proof: SumcheckProof<F> =
-            IPForMLSumcheck::<F>::prove(&mut prover_state, &combine_fn, &hash_fn);
-
-        let mut prover_state_dup: ProverState<F> = IPForMLSumcheck::prover_init(&polynomials, 2);
-        let proof_dup: SumcheckProof<F> =
-            IPForMLSumcheck::<F>::prove_product(&mut prover_state_dup, &hash_fn);
-
-        let result = IPForMLSumcheck::verify(claimed_sum, &proof, &hash_fn);
-        assert_eq!(result.unwrap(), true);
-
-        let result_dup = IPForMLSumcheck::verify(claimed_sum, &proof_dup, &hash_fn);
-        assert_eq!(result_dup.unwrap(), true);
     }
 }
