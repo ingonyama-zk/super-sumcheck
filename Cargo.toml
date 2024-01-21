@@ -16,3 +16,4 @@ rayon = { version = "1", optional = true }
 ark-ec = { version = "0.4.2"}
 ark-bls12-381 = {version = "0.4.0"}
 rand = "0.8"
+merlin ={ version = "3.0.0"}

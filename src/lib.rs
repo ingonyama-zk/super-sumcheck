@@ -1,6 +1,7 @@
 mod data_structures;
 mod prover;
 mod test;
+mod transcript;
 mod verifier;
 
 use ark_ff::Field;

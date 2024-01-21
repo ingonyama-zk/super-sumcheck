@@ -1,7 +1,9 @@
+use ark_ec::CurveGroup;
 use ark_ff::{batch_inversion_and_mul, Field};
 use ark_serialize::{CanonicalDeserialize, CanonicalSerialize};
+use merlin::Transcript;
 
-use crate::{prover::SumcheckProof, IPForMLSumcheck};
+use crate::{prover::SumcheckProof, transcript::TranscriptProtocol, IPForMLSumcheck};
 
 #[derive(Clone, CanonicalSerialize, CanonicalDeserialize)]
 /// Verifier Message
@@ -17,20 +19,26 @@ impl<F: Field> IPForMLSumcheck<F> {
     /// f(x = v) = \sum_j g_j
     /// ```
     ///
-    pub fn verify<H>(
+    pub fn verify<G>(
         claimed_sum: F,
         proof: &SumcheckProof<F>,
-        hash_function: &H,
+        transcript: &mut Transcript,
     ) -> Result<bool, &'static str>
     where
-        H: Fn(&Vec<F>) -> F + Sync,
+        G: CurveGroup<ScalarField = F>,
     {
         if proof.num_vars == 0 {
             return Err("Invalid proof.");
         }
 
+        // Initiate the transcript with the protocol name
+        <Transcript as TranscriptProtocol<G>>::sumcheck_proof_domain_sep(
+            transcript,
+            proof.num_vars as u64,
+            proof.degree as u64,
+        );
+
         let mut expected_sum = claimed_sum;
-        let previous_alpha = F::zero();
         for round_index in 0..proof.num_vars {
             let round_poly_evaluations: &Vec<F> = &proof.round_polynomials[round_index];
             if round_poly_evaluations.len() != (proof.degree + 1) {
@@ -49,10 +57,18 @@ impl<F: Field> IPForMLSumcheck<F> {
                 return Err("Prover message is not consistent with the claim.".into());
             }
 
-            // generate challenge
-            let mut preimage: Vec<F> = round_poly_evaluations.clone();
-            preimage.insert(0, previous_alpha);
-            let alpha = hash_function(&preimage);
+            // append the prover's message to the transcript
+            <Transcript as TranscriptProtocol<G>>::append_scalars(
+                transcript,
+                b"r_poly",
+                &proof.round_polynomials[round_index],
+            );
+
+            // derive the verifier's challenge for the next round
+            let alpha = <Transcript as TranscriptProtocol<G>>::challenge_scalar(
+                transcript,
+                b"challenge_nextround",
+            );
 
             // Compute r_{i}(α_i) using barycentric interpolation
             expected_sum = barycentric_interpolation(round_poly_evaluations, alpha);

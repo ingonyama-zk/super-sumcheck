@@ -7,11 +7,12 @@ mod integration_tests {
     use ark_ff::Zero;
     use ark_poly::DenseMultilinearExtension;
     use ark_poly::MultilinearExtension;
-    use ark_std::iterable::Iterable;
     use ark_std::test_rng;
     use ark_std::vec::Vec;
+    use merlin::Transcript;
 
     type F = ark_bls12_381::Fr;
+    type G = ark_bls12_381::G1Projective;
 
     #[test]
     fn test_sumcheck() {
@@ -21,11 +22,6 @@ mod integration_tests {
             data[0]
         }
 
-        // Define the hash function for testing
-        fn hash_fn(data: &Vec<F>) -> F {
-            assert!(data.len() > 0);
-            data.iter().sum::<F>() / F::from(8)
-        }
         // Take a simple polynomial
         let num_variables = 3;
         let num_evaluations = (1 as u32) << num_variables;
@@ -35,10 +31,17 @@ mod integration_tests {
 
         let polynomials: Vec<LinearLagrangeList<F>> = vec![LinearLagrangeList::<F>::from(&poly)];
         let mut prover_state: ProverState<F> = IPForMLSumcheck::prover_init(&polynomials, 1);
-        let proof: SumcheckProof<F> =
-            IPForMLSumcheck::<F>::prove(&mut prover_state, &combine_fn, &hash_fn);
 
-        let result = IPForMLSumcheck::verify(claimed_sum, &proof, &hash_fn);
+        // create a proof
+        let mut prover_transcript = Transcript::new(b"test_sumcheck");
+        let proof: SumcheckProof<F> = IPForMLSumcheck::<F>::prove::<G, _>(
+            &mut prover_state,
+            &combine_fn,
+            &mut prover_transcript,
+        );
+
+        let mut verifier_transcript = Transcript::new(b"test_sumcheck");
+        let result = IPForMLSumcheck::verify::<G>(claimed_sum, &proof, &mut verifier_transcript);
         assert_eq!(result.unwrap(), true);
     }
 
@@ -50,11 +53,6 @@ mod integration_tests {
             data[0] * data[1]
         }
 
-        // Define the hash function for testing
-        fn hash_fn(data: &Vec<F>) -> F {
-            assert!(data.len() > 0);
-            data.iter().sum::<F>()
-        }
         // Take two simple polynomial
         let num_variables = 3;
         let num_evaluations = (1 as u32) << num_variables;
@@ -74,17 +72,27 @@ mod integration_tests {
             LinearLagrangeList::<F>::from(&poly_b),
         ];
         let mut prover_state: ProverState<F> = IPForMLSumcheck::prover_init(&polynomials, 2);
-        let proof: SumcheckProof<F> =
-            IPForMLSumcheck::<F>::prove(&mut prover_state, &combine_fn, &hash_fn);
+        let mut prover_transcript = Transcript::new(b"test_product_sumcheck");
+        let proof: SumcheckProof<F> = IPForMLSumcheck::<F>::prove::<G, _>(
+            &mut prover_state,
+            &combine_fn,
+            &mut prover_transcript,
+        );
 
         let mut prover_state_dup: ProverState<F> = IPForMLSumcheck::prover_init(&polynomials, 2);
-        let proof_dup: SumcheckProof<F> =
-            IPForMLSumcheck::<F>::prove_product(&mut prover_state_dup, &hash_fn);
+        let mut prover_transcript_dup = Transcript::new(b"test_product_sumcheck_algo2");
+        let proof_dup: SumcheckProof<F> = IPForMLSumcheck::<F>::prove_product::<G>(
+            &mut prover_state_dup,
+            &mut prover_transcript_dup,
+        );
 
-        let result = IPForMLSumcheck::verify(claimed_sum, &proof, &hash_fn);
+        let mut verifier_transcript = Transcript::new(b"test_product_sumcheck");
+        let result = IPForMLSumcheck::verify::<G>(claimed_sum, &proof, &mut verifier_transcript);
         assert_eq!(result.unwrap(), true);
 
-        let result_dup = IPForMLSumcheck::verify(claimed_sum, &proof_dup, &hash_fn);
+        let mut verifier_transcript_dup = Transcript::new(b"test_product_sumcheck_algo2");
+        let result_dup =
+            IPForMLSumcheck::verify::<G>(claimed_sum, &proof_dup, &mut verifier_transcript_dup);
         assert_eq!(result_dup.unwrap(), true);
     }
 
@@ -96,11 +104,6 @@ mod integration_tests {
             data[0] * data[1] * data[3] - data[2] * data[3]
         }
 
-        // Define the hash function for testing
-        fn hash_fn(data: &Vec<F>) -> F {
-            assert!(data.len() > 0);
-            data.iter().sum::<F>()
-        }
         // Take four simple polynomial
         let mut rng = test_rng();
         const NV: usize = 10;
@@ -125,10 +128,15 @@ mod integration_tests {
             LinearLagrangeList::<F>::from(&poly_e),
         ];
         let mut prover_state: ProverState<F> = IPForMLSumcheck::prover_init(&polynomials, 3);
-        let proof: SumcheckProof<F> =
-            IPForMLSumcheck::<F>::prove(&mut prover_state, &combine_fn, &hash_fn);
+        let mut prover_transcript = Transcript::new(b"test_r1cs_sumcheck");
+        let proof: SumcheckProof<F> = IPForMLSumcheck::<F>::prove::<G, _>(
+            &mut prover_state,
+            &combine_fn,
+            &mut prover_transcript,
+        );
 
-        let result = IPForMLSumcheck::verify(claimed_sum, &proof, &hash_fn);
+        let mut verifier_transcript = Transcript::new(b"test_r1cs_sumcheck");
+        let result = IPForMLSumcheck::verify::<G>(claimed_sum, &proof, &mut verifier_transcript);
         assert_eq!(result.unwrap(), true);
     }
 }
