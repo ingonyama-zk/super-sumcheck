@@ -4,7 +4,7 @@ use crate::{
     IPForMLSumcheck,
 };
 use ark_ec::CurveGroup;
-use ark_ff::Field;
+use ark_ff::PrimeField;
 use ark_poly::DenseMultilinearExtension;
 use ark_std::{log2, vec::Vec};
 use merlin::Transcript;
@@ -12,16 +12,15 @@ use merlin::Transcript;
 #[cfg(feature = "parallel")]
 use rayon::prelude::*;
 
-// TODO: We must use PrimeField instead of Field.
 // A sumcheck proof contains all round polynomials
-pub struct SumcheckProof<F: Field> {
+pub struct SumcheckProof<F: PrimeField> {
     pub(crate) num_vars: usize,
     pub(crate) degree: usize,
     pub(crate) round_polynomials: Vec<Vec<F>>,
 }
 
 /// Prover State
-pub struct ProverState<F: Field> {
+pub struct ProverState<F: PrimeField> {
     /// sampled randomness (for each round) given by the verifier
     pub randomness: Vec<F>,
     /// Stores a list of multilinear extensions
@@ -34,7 +33,7 @@ pub struct ProverState<F: Field> {
     pub round: usize,
 }
 
-impl<F: Field> IPForMLSumcheck<F> {
+impl<F: PrimeField> IPForMLSumcheck<F> {
     pub fn prover_init(
         polynomials: &Vec<LinearLagrangeList<F>>,
         sumcheck_poly_degree: usize,
