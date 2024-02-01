@@ -1,13 +1,18 @@
 use crate::{
     data_structures::{LinearLagrangeList, MatrixPolynomial},
+    transcript::TranscriptProtocol,
     IPForMLSumcheck,
 };
+use ark_ec::CurveGroup;
 use ark_ff::Field;
 use ark_poly::DenseMultilinearExtension;
 use ark_std::{log2, vec::Vec};
+use merlin::Transcript;
+
 #[cfg(feature = "parallel")]
 use rayon::prelude::*;
 
+// TODO: We must use PrimeField instead of Field.
 // A sumcheck proof contains all round polynomials
 pub struct SumcheckProof<F: Field> {
     pub(crate) num_vars: usize,
@@ -64,21 +69,27 @@ impl<F: Field> IPForMLSumcheck<F> {
 
     /// write comments
     ///
-    pub fn prove<C, H>(
+    pub fn prove<G, C>(
         prover_state: &mut ProverState<F>,
         combine_function: &C,
-        hash_function: &H,
+        transcript: &mut Transcript,
     ) -> SumcheckProof<F>
     where
+        G: CurveGroup<ScalarField = F>,
         C: Fn(&Vec<F>) -> F + Sync,
-        H: Fn(&Vec<F>) -> F + Sync,
     {
+        // Initiate the transcript with the protocol name
+        <Transcript as TranscriptProtocol<G>>::sumcheck_proof_domain_sep(
+            transcript,
+            prover_state.num_vars as u64,
+            prover_state.max_multiplicands as u64,
+        );
+
         // Declare r_polys and initialise it with 0s
         let r_degree = prover_state.max_multiplicands;
         let mut r_polys: Vec<Vec<F>> = (0..prover_state.num_vars)
             .map(|_| vec![F::zero(); r_degree + 1])
             .collect();
-        let previous_alpha = F::zero();
 
         for round_index in 0..prover_state.num_vars {
             let state_polynomial_len = prover_state.state_polynomials[0].list.len();
@@ -100,10 +111,18 @@ impl<F: Field> IPForMLSumcheck<F> {
                 }
             }
 
-            // generate challenge α_i = H(α_{i-1}, r_poly);
-            let mut preimage: Vec<F> = r_polys[round_index].clone();
-            preimage.insert(0, previous_alpha);
-            let alpha = hash_function(&preimage);
+            // append the round polynomial (i.e. prover message) to the transcript
+            <Transcript as TranscriptProtocol<G>>::append_scalars(
+                transcript,
+                b"r_poly",
+                &r_polys[round_index],
+            );
+
+            // generate challenge α_i = H( transcript );
+            let alpha = <Transcript as TranscriptProtocol<G>>::challenge_scalar(
+                transcript,
+                b"challenge_nextround",
+            );
 
             // update prover state polynomials
             for j in 0..prover_state.state_polynomials.len() {
@@ -118,19 +137,29 @@ impl<F: Field> IPForMLSumcheck<F> {
         }
     }
 
-    pub fn prove_product<H>(
+    ///
+    /// Proves the sumcheck relation for product of MLE polynomials using the witness-challenge
+    /// separation algorithm.
+    ///
+    pub fn prove_product<G>(
         prover_state: &mut ProverState<F>,
-        hash_function: &H,
+        transcript: &mut Transcript,
     ) -> SumcheckProof<F>
     where
-        H: Fn(&Vec<F>) -> F + Sync,
+        G: CurveGroup<ScalarField = F>,
     {
+        // Initiate the transcript with the protocol name
+        <Transcript as TranscriptProtocol<G>>::sumcheck_proof_domain_sep(
+            transcript,
+            prover_state.num_vars as u64,
+            prover_state.max_multiplicands as u64,
+        );
+
         // Declare r_polys and initialise it with 0s
         let r_degree = prover_state.max_multiplicands;
         let mut r_polys: Vec<Vec<F>> = (0..prover_state.num_vars)
             .map(|_| vec![F::zero(); r_degree + 1])
             .collect();
-        let previous_alpha = F::zero();
 
         // Create and fill matrix polynomials.
         let mut matrix_polynomials: Vec<MatrixPolynomial<F>> =
@@ -186,10 +215,18 @@ impl<F: Field> IPForMLSumcheck<F> {
                     round_matrix_polynomial.dot_product(&gamma_matrix);
             }
 
-            // generate challenge α_i = H(α_{i-1}, r_poly);
-            let mut preimage: Vec<F> = r_polys[round_index].clone();
-            preimage.insert(0, previous_alpha);
-            let alpha = hash_function(&preimage);
+            // append the round polynomial (i.e. prover message) to the transcript
+            <Transcript as TranscriptProtocol<G>>::append_scalars(
+                transcript,
+                b"r_poly",
+                &r_polys[round_index],
+            );
+
+            // generate challenge α_i = H( transcript );
+            let alpha = <Transcript as TranscriptProtocol<G>>::challenge_scalar(
+                transcript,
+                b"challenge_nextround",
+            );
 
             // Update challenge matrix with new challenge
             let challenge_tuple =
