@@ -34,6 +34,8 @@ pub struct ProverState<F: PrimeField> {
 }
 
 impl<F: PrimeField> IPForMLSumcheck<F> {
+    /// Initialise prover state from a given set of polynomials (in their evaluation form).
+    /// The degree of the sumcheck round polynomial also needs to be input.
     pub fn prover_init(
         polynomials: &Vec<LinearLagrangeList<F>>,
         sumcheck_poly_degree: usize,
@@ -66,7 +68,9 @@ impl<F: PrimeField> IPForMLSumcheck<F> {
         }
     }
 
-    /// write comments
+    ///
+    /// Creates a sumcheck proof consisting of `n` round polynomials each of degree `d` using Algorithm 1.
+    /// We allow for any function `combine_function` on a set of MLE polynomials.
     ///
     pub fn prove<G, C>(
         prover_state: &mut ProverState<F>,
@@ -138,7 +142,7 @@ impl<F: PrimeField> IPForMLSumcheck<F> {
 
     ///
     /// Proves the sumcheck relation for product of MLE polynomials using the witness-challenge
-    /// separation algorithm.
+    /// separation algorithm (Algorithm 2 that uses pre-computations).
     ///
     pub fn prove_product<G>(
         prover_state: &mut ProverState<F>,

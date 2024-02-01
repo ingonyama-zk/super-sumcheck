@@ -1,23 +1,14 @@
 use ark_ec::CurveGroup;
 use ark_ff::{batch_inversion_and_mul, PrimeField};
-use ark_serialize::{CanonicalDeserialize, CanonicalSerialize};
 use merlin::Transcript;
 
 use crate::{prover::SumcheckProof, transcript::TranscriptProtocol, IPForMLSumcheck};
 
-#[derive(Clone, CanonicalSerialize, CanonicalDeserialize)]
-/// Verifier Message
-pub struct VerifierMsg<F: PrimeField> {
-    /// randomness sampled by verifier
-    pub randomness: F,
-}
-
 impl<F: PrimeField> IPForMLSumcheck<F> {
     ///
-    /// write comments $`a+b`$
-    /// ```math
-    /// f(x = v) = \sum_j g_j
-    /// ```
+    /// Verify a sumcheck proof by checking for correctness of each round polynomial.
+    /// Additionally, checks the evaluation of the original MLE polynomial (via oracle access)
+    /// at the challenge vector is correct.
     ///
     pub fn verify<G>(
         claimed_sum: F,
@@ -78,8 +69,10 @@ impl<F: PrimeField> IPForMLSumcheck<F> {
 }
 
 ///
-/// write comments
-/// explain why this works only for num_points ≤ 20
+/// Evaluates an MLE polynomial at `x` given its evaluations on a set of integers.
+/// This works only for `num_points` ≤ 20 because we assume the integers are 64-bit numbers.
+/// We know that 2^61 < factorial(20) < 2^62, hence factorial(20) can fit in a 64-bit number.
+/// We can trivially extend this for `num_points` > 20 but in practical use cases, `num_points` would not exceed 8 or 10.
 /// Reference: Equation (3.3) from https://people.maths.ox.ac.uk/trefethen/barycentric.pdf
 ///
 pub(crate) fn barycentric_interpolation<F: PrimeField>(evaluations: &[F], x: F) -> F {
