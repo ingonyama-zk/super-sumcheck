@@ -1,5 +1,5 @@
 use ark_ec::CurveGroup;
-use ark_ff::{batch_inversion_and_mul, Field};
+use ark_ff::{batch_inversion_and_mul, PrimeField};
 use ark_serialize::{CanonicalDeserialize, CanonicalSerialize};
 use merlin::Transcript;
 
@@ -7,12 +7,12 @@ use crate::{prover::SumcheckProof, transcript::TranscriptProtocol, IPForMLSumche
 
 #[derive(Clone, CanonicalSerialize, CanonicalDeserialize)]
 /// Verifier Message
-pub struct VerifierMsg<F: Field> {
+pub struct VerifierMsg<F: PrimeField> {
     /// randomness sampled by verifier
     pub randomness: F,
 }
 
-impl<F: Field> IPForMLSumcheck<F> {
+impl<F: PrimeField> IPForMLSumcheck<F> {
     ///
     /// write comments $`a+b`$
     /// ```math
@@ -82,7 +82,7 @@ impl<F: Field> IPForMLSumcheck<F> {
 /// explain why this works only for num_points ≤ 20
 /// Reference: Equation (3.3) from https://people.maths.ox.ac.uk/trefethen/barycentric.pdf
 ///
-pub(crate) fn barycentric_interpolation<F: Field>(evaluations: &[F], x: F) -> F {
+pub(crate) fn barycentric_interpolation<F: PrimeField>(evaluations: &[F], x: F) -> F {
     let num_points = evaluations.len();
     let mut lagrange_coefficients: Vec<F> =
         (0..num_points).map(|j| x - F::from(j as u64)).collect();
