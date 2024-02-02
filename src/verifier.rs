@@ -10,6 +10,12 @@ impl<F: PrimeField> IPForMLSumcheck<F> {
     /// Additionally, checks the evaluation of the original MLE polynomial (via oracle access)
     /// at the challenge vector is correct.
     ///
+    /// TODO: Add final evaluation check for verifier using an opening proof (of a commitment scheme).
+    /// The verifier does not perform the final check: f(alpha_1, alpha_2, ..., alpha_n) == r_n(alpha_n).
+    /// This is because we have not implemented a commitment scheme that can allow a prover to "open" an MLE polynomial.
+    /// We could give the verifier an oracle access to the MLE polynomial `f` but we defer this to the commitment
+    /// scheme implementation in a future release.
+    ///
     pub fn verify<G>(
         claimed_sum: F,
         proof: &SumcheckProof<F>,
