@@ -80,6 +80,22 @@ impl<F: Field> LinearLagrangeList<F> {
         }
     }
 
+    pub fn convert<OtherF, T>(self: &LinearLagrangeList<F>, to_ef: &T) -> LinearLagrangeList<OtherF>
+    where
+        OtherF: Field,
+        T: Fn(&F) -> OtherF + Sync,
+    {
+        let list_size = self.size;
+        let poly_list = (0..list_size)
+            .map(|i| LinearLagrange::new(&(to_ef(&self.list[i].even)), &(to_ef(&self.list[i].odd))))
+            .collect::<Vec<LinearLagrange<OtherF>>>();
+
+        LinearLagrangeList::<OtherF> {
+            size: list_size,
+            list: poly_list,
+        }
+    }
+
     /// Create a new initialized list (create with vectors specified)
     pub fn new(list_size: &usize, poly_list: &Vec<LinearLagrange<F>>) -> LinearLagrangeList<F> {
         LinearLagrangeList {
@@ -264,18 +280,28 @@ impl<F: Field> MatrixPolynomial<F> {
         }
     }
 
-    pub fn dot_product(&self, rhs: &Self) -> F {
-        assert_eq!(self.no_of_columns, rhs.no_of_columns);
-        assert_eq!(self.no_of_rows, rhs.no_of_rows);
+    pub fn dot_product<OtherF, P>(
+        lhs: &MatrixPolynomial<F>,
+        rhs: &MatrixPolynomial<OtherF>,
+        mult_be: &P,
+    ) -> OtherF
+    where
+        OtherF: Field,
+        P: Fn(&F, &OtherF) -> OtherF + Sync,
+    {
+        assert_eq!(lhs.no_of_columns, rhs.no_of_columns);
+        assert_eq!(lhs.no_of_rows, rhs.no_of_rows);
 
-        self.evaluation_rows
+        lhs.evaluation_rows
             .iter()
             .zip(rhs.evaluation_rows.iter())
-            .fold(F::zero(), |acc, (l_row, r_row)| {
+            .fold(OtherF::zero(), |acc, (l_row, r_row)| {
                 acc + l_row
                     .iter()
                     .zip(r_row.iter())
-                    .fold(F::zero(), |sum, (&l_val, &r_val)| sum + l_val * r_val)
+                    .fold(OtherF::zero(), |sum, (&l_val, &r_val)| {
+                        sum + mult_be(&l_val, &r_val)
+                    })
             })
     }
 }
@@ -519,8 +545,11 @@ mod test {
         let matrix_poly_a = MatrixPolynomial::from_dense_mle(&poly_a);
         let poly_b = DenseMultilinearExtension::<F>::rand(4, &mut rng);
         let matrix_poly_b = MatrixPolynomial::from_dense_mle(&poly_b);
+        fn mult_be(left: &F, right: &F) -> F {
+            left * right
+        }
 
-        let computed = matrix_poly_a.dot_product(&matrix_poly_b);
+        let computed = MatrixPolynomial::dot_product(&matrix_poly_a, &matrix_poly_b, &mult_be);
         let expected = poly_a
             .evaluations
             .iter()

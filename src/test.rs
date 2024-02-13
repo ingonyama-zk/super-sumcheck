@@ -1,6 +1,7 @@
 #[cfg(test)]
 mod integration_tests {
     use crate::data_structures::LinearLagrangeList;
+    use crate::prover::AlgorithmType;
     use crate::prover::ProverState;
     use crate::prover::SumcheckProof;
     use crate::IPForMLSumcheck;
@@ -12,6 +13,8 @@ mod integration_tests {
     use merlin::Transcript;
 
     type F = ark_bls12_381::Fr;
+    type BF = ark_bls12_381::Fr;
+    type EF = ark_bls12_381::Fr;
     type G = ark_bls12_381::G1Projective;
 
     #[test]
@@ -22,6 +25,11 @@ mod integration_tests {
             data[0]
         }
 
+        // Convert a base field element to an extension field element
+        fn to_ef(base_field_element: &BF) -> EF {
+            *base_field_element
+        }
+
         // Take a simple polynomial
         let num_variables = 3;
         let num_evaluations = (1 as u32) << num_variables;
@@ -30,18 +38,22 @@ mod integration_tests {
         let poly = DenseMultilinearExtension::<F>::from_evaluations_vec(num_variables, evaluations);
 
         let polynomials: Vec<LinearLagrangeList<F>> = vec![LinearLagrangeList::<F>::from(&poly)];
-        let mut prover_state: ProverState<F> = IPForMLSumcheck::prover_init(&polynomials, 1);
+        let mut prover_state: ProverState<EF, BF> =
+            IPForMLSumcheck::prover_init(&polynomials, 1, AlgorithmType::Naive);
 
         // create a proof
         let mut prover_transcript = Transcript::new(b"test_sumcheck");
-        let proof: SumcheckProof<F> = IPForMLSumcheck::<F>::prove::<G, _>(
+        let proof: SumcheckProof<F> = IPForMLSumcheck::<EF, BF>::prove::<G, _, _, _>(
             &mut prover_state,
             &combine_fn,
+            &combine_fn,
             &mut prover_transcript,
+            &to_ef,
         );
 
         let mut verifier_transcript = Transcript::new(b"test_sumcheck");
-        let result = IPForMLSumcheck::verify::<G>(claimed_sum, &proof, &mut verifier_transcript);
+        let result =
+            IPForMLSumcheck::<EF, BF>::verify::<G>(claimed_sum, &proof, &mut verifier_transcript);
         assert_eq!(result.unwrap(), true);
     }
 
@@ -51,6 +63,16 @@ mod integration_tests {
         fn combine_fn(data: &Vec<F>) -> F {
             assert!(data.len() == 2);
             data[0] * data[1]
+        }
+
+        // Convert a base field element to an extension field element
+        fn to_ef(base_field_element: &BF) -> EF {
+            *base_field_element
+        }
+
+        // Multiplies a base field element to an extension field element
+        fn mult_be(extension_field_element: &EF, base_field_element: &BF) -> EF {
+            extension_field_element * base_field_element
         }
 
         // Take two simple polynomial
@@ -71,28 +93,37 @@ mod integration_tests {
             LinearLagrangeList::<F>::from(&poly_a),
             LinearLagrangeList::<F>::from(&poly_b),
         ];
-        let mut prover_state: ProverState<F> = IPForMLSumcheck::prover_init(&polynomials, 2);
+        let mut prover_state: ProverState<EF, BF> =
+            IPForMLSumcheck::prover_init(&polynomials, 2, AlgorithmType::Naive);
         let mut prover_transcript = Transcript::new(b"test_product_sumcheck");
-        let proof: SumcheckProof<F> = IPForMLSumcheck::<F>::prove::<G, _>(
+        let proof: SumcheckProof<F> = IPForMLSumcheck::<EF, BF>::prove::<G, _, _, _>(
             &mut prover_state,
             &combine_fn,
+            &combine_fn,
             &mut prover_transcript,
+            &to_ef,
         );
 
-        let mut prover_state_dup: ProverState<F> = IPForMLSumcheck::prover_init(&polynomials, 2);
+        let mut prover_state_dup: ProverState<EF, BF> =
+            IPForMLSumcheck::prover_init(&polynomials, 2, AlgorithmType::Naive);
         let mut prover_transcript_dup = Transcript::new(b"test_product_sumcheck_algo2");
-        let proof_dup: SumcheckProof<F> = IPForMLSumcheck::<F>::prove_product::<G>(
+        let proof_dup: SumcheckProof<F> = IPForMLSumcheck::<EF, BF>::prove_product::<G, _>(
             &mut prover_state_dup,
             &mut prover_transcript_dup,
+            &mult_be,
         );
 
         let mut verifier_transcript = Transcript::new(b"test_product_sumcheck");
-        let result = IPForMLSumcheck::verify::<G>(claimed_sum, &proof, &mut verifier_transcript);
+        let result =
+            IPForMLSumcheck::<EF, BF>::verify::<G>(claimed_sum, &proof, &mut verifier_transcript);
         assert_eq!(result.unwrap(), true);
 
         let mut verifier_transcript_dup = Transcript::new(b"test_product_sumcheck_algo2");
-        let result_dup =
-            IPForMLSumcheck::verify::<G>(claimed_sum, &proof_dup, &mut verifier_transcript_dup);
+        let result_dup = IPForMLSumcheck::<EF, BF>::verify::<G>(
+            claimed_sum,
+            &proof_dup,
+            &mut verifier_transcript_dup,
+        );
         assert_eq!(result_dup.unwrap(), true);
     }
 
@@ -102,6 +133,11 @@ mod integration_tests {
         fn combine_fn(data: &Vec<F>) -> F {
             assert!(data.len() == 4);
             data[0] * data[1] * data[3] - data[2] * data[3]
+        }
+
+        // Convert a base field element to an extension field element
+        fn to_ef(base_field_element: &BF) -> EF {
+            *base_field_element
         }
 
         // Take four simple polynomial
@@ -127,16 +163,20 @@ mod integration_tests {
             LinearLagrangeList::<F>::from(&poly_c),
             LinearLagrangeList::<F>::from(&poly_e),
         ];
-        let mut prover_state: ProverState<F> = IPForMLSumcheck::prover_init(&polynomials, 3);
+        let mut prover_state: ProverState<EF, BF> =
+            IPForMLSumcheck::<EF, BF>::prover_init(&polynomials, 3, AlgorithmType::Naive);
         let mut prover_transcript = Transcript::new(b"test_r1cs_sumcheck");
-        let proof: SumcheckProof<F> = IPForMLSumcheck::<F>::prove::<G, _>(
+        let proof: SumcheckProof<F> = IPForMLSumcheck::<EF, BF>::prove::<G, _, _, _>(
             &mut prover_state,
             &combine_fn,
+            &combine_fn,
             &mut prover_transcript,
+            &to_ef,
         );
 
         let mut verifier_transcript = Transcript::new(b"test_r1cs_sumcheck");
-        let result = IPForMLSumcheck::verify::<G>(claimed_sum, &proof, &mut verifier_transcript);
+        let result =
+            IPForMLSumcheck::<EF, BF>::verify::<G>(claimed_sum, &proof, &mut verifier_transcript);
         assert_eq!(result.unwrap(), true);
     }
 }

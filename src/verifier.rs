@@ -4,7 +4,7 @@ use merlin::Transcript;
 
 use crate::{prover::SumcheckProof, transcript::TranscriptProtocol, IPForMLSumcheck};
 
-impl<F: PrimeField> IPForMLSumcheck<F> {
+impl<EF: PrimeField, BF: PrimeField> IPForMLSumcheck<EF, BF> {
     ///
     /// Verify a sumcheck proof by checking for correctness of each round polynomial.
     /// Additionally, checks the evaluation of the original MLE polynomial (via oracle access)
@@ -17,12 +17,12 @@ impl<F: PrimeField> IPForMLSumcheck<F> {
     /// scheme implementation in a future release.
     ///
     pub fn verify<G>(
-        claimed_sum: F,
-        proof: &SumcheckProof<F>,
+        claimed_sum: EF,
+        proof: &SumcheckProof<EF>,
         transcript: &mut Transcript,
     ) -> Result<bool, &'static str>
     where
-        G: CurveGroup<ScalarField = F>,
+        G: CurveGroup<ScalarField = EF>,
     {
         if proof.num_vars == 0 {
             return Err("Invalid proof.");
@@ -37,7 +37,7 @@ impl<F: PrimeField> IPForMLSumcheck<F> {
 
         let mut expected_sum = claimed_sum;
         for round_index in 0..proof.num_vars {
-            let round_poly_evaluations: &Vec<F> = &proof.round_polynomials[round_index];
+            let round_poly_evaluations: &Vec<EF> = &proof.round_polynomials[round_index];
             if round_poly_evaluations.len() != (proof.degree + 1) {
                 panic!(
                     "incorrect number of evaluations of the {}-th round polynomial",
@@ -48,6 +48,7 @@ impl<F: PrimeField> IPForMLSumcheck<F> {
             let round_poly_evaluation_at_0 = round_poly_evaluations[0];
             let round_poly_evaluation_at_1 = round_poly_evaluations[1];
             let computed_sum = round_poly_evaluation_at_0 + round_poly_evaluation_at_1;
+            println!("computed_sum[{}] = {}", round_index, computed_sum);
 
             // Check r_{i}(α_i) == r_{i+1}(0) + r_{i+1}(1)
             if computed_sum != expected_sum {
