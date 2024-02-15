@@ -28,6 +28,9 @@ pub enum AlgorithmType {
 
 /// Prover State
 /// EF stands for extension field and BF stands for base field
+/// bb = base-field element multiplied to a base-field element
+/// be = base-field element multiplied to an extension-field element
+/// ee = extension-field element multiplied to an extension-field element
 pub struct ProverState<EF: PrimeField, BF: PrimeField> {
     /// sampled randomness (for each round) given by the verifier
     pub randomness: Vec<EF>,
@@ -80,6 +83,10 @@ impl<EF: PrimeField, BF: PrimeField> IPForMLSumcheck<EF, BF> {
         }
     }
 
+    /// Computes the round polynomial using the algorithm 1 (collapsing arrays) from the paper
+    /// https://github.com/ingonyama-zk/papers/blob/main/sumcheck_201_chapter_1.pdf
+    ///
+    /// Outputs the challenge (which is an extension field element).
     pub fn compute_round_polynomial<G, C, F>(
         round_number: usize,
         state_polynomials: &Vec<LinearLagrangeList<F>>,
@@ -127,7 +134,9 @@ impl<EF: PrimeField, BF: PrimeField> IPForMLSumcheck<EF, BF> {
         return alpha;
     }
 
-    /// First algorithm
+    /// Algorithm 1: This algorithm is split into two computation phases.
+    ///   Phase 1: Compute round 1 polynomial with only bb multiplications
+    ///   Phase 2: Compute round 2, 3, ..., n polynomials with only ee multiplications
     pub fn prove_with_naive_algorithm<G, EC, BC, T>(
         prover_state: &mut ProverState<EF, BF>,
         ef_combine_function: &EC,
@@ -144,7 +153,7 @@ impl<EF: PrimeField, BF: PrimeField> IPForMLSumcheck<EF, BF> {
         // The degree of the round polynomial is the highest-degree multiplicand in the combine function.
         let r_degree = prover_state.max_multiplicands;
 
-        // Process round 1 separately as we need to only perform bb multiplications.
+        // Phase 1: Process round 1 separately as we need to only perform bb multiplications.
         let alpha = Self::compute_round_polynomial::<G, BC, BF>(
             1,
             &prover_state.state_polynomials,
@@ -167,7 +176,7 @@ impl<EF: PrimeField, BF: PrimeField> IPForMLSumcheck<EF, BF> {
             ef_state_polynomials[j].fold_in_half(alpha);
         }
 
-        // Process the subsequent rounds with only ee multiplications.
+        // Phase 2: Process the subsequent rounds with only ee multiplications.
         for round_number in 2..=prover_state.num_vars {
             let alpha = Self::compute_round_polynomial::<G, EC, EF>(
                 round_number,
@@ -185,22 +194,200 @@ impl<EF: PrimeField, BF: PrimeField> IPForMLSumcheck<EF, BF> {
         }
     }
 
+    pub fn prove_with_witness_challenge_sep_agorithm<G, BC, BE, AEE, EE>(
+        prover_state: &mut ProverState<EF, BF>,
+        bf_combine_function: &BC,
+        transcript: &mut Transcript,
+        round_polynomials: &mut Vec<Vec<EF>>,
+        mult_be: &BE,
+        add_ee: &AEE,
+        mult_ee: &EE,
+    ) where
+        G: CurveGroup<ScalarField = EF>,
+        BC: Fn(&Vec<BF>) -> EF + Sync,
+        BE: Fn(&BF, &EF) -> EF + Sync,
+        AEE: Fn(&EF, &EF) -> EF + Sync,
+        EE: Fn(&EF, &EF) -> EF + Sync,
+    {
+        // The degree of the round polynomial is the highest-degree multiplicand in the combine function.
+        let r_degree = prover_state.max_multiplicands;
+
+        // Phase 1: Process round 1 separately as we need to only perform bb multiplications.
+        let alpha = Self::compute_round_polynomial::<G, BC, BF>(
+            1,
+            &prover_state.state_polynomials,
+            round_polynomials,
+            r_degree,
+            &bf_combine_function,
+            transcript,
+        );
+
+        // Create and fill matrix polynomials.
+        // We need to represent state polynomials in matrix form for this algorithm because:
+        // Round 1:
+        // row 0: [ p(0, x) ]
+        // row 1: [ p(1, x) ]
+        //
+        // Round 2:
+        // row 0: [ p(0, 0, x) ]
+        // row 1: [ p(0, 1, x) ]
+        // row 0: [ p(1, 0, x) ]
+        // row 1: [ p(1, 1, x) ]
+        //
+        // and so on.
+        let mut matrix_polynomials: Vec<MatrixPolynomial<BF>> =
+            Vec::with_capacity(prover_state.max_multiplicands);
+
+        for i in 0..prover_state.max_multiplicands {
+            matrix_polynomials.push(MatrixPolynomial::from_linear_lagrange_list(
+                &prover_state.state_polynomials[i],
+            ));
+        }
+
+        // This matrix will store challenges in the form:
+        // [ (1-α_1)(1-α_2)...(1-α_m) ]
+        // [ (1-α_1)(1-α_2)...(α_m) ]
+        // [ .. ]
+        // [ .. ]
+        // [ (α_1)(α_2)...(α_m) ]
+        //
+        // We initialise this with the first challenge as:
+        // [ (1-α_1) ]
+        // [ (α_1) ]
+        //
+        let challenge_tuple =
+            DenseMultilinearExtension::from_evaluations_vec(1, vec![EF::ONE - alpha, alpha]);
+        let mut challenge_matrix_polynomial = MatrixPolynomial::from_dense_mle(&challenge_tuple);
+
+        // Iterate for rounds 2, 3, ..., log(n).
+        // For each round i s.t. i ≥ 2, we compute the evaluation of the round polynomial as:
+        //
+        // r_i(k) = ∑_{x} p(r_1, r_2, ..., r_{i-1},  k,  x) *
+        //                q(r_1, r_2, ..., r_{i-1},  k,  x) *
+        //                h(r_1, r_2, ..., r_{i-1},  k,  x) * ...
+        //
+        // for each k = 0, 1, 2, ...
+        // Thus, we iterate over each polynomial (p, q, h, ...) to compute:
+        //
+        // poly(r_1, r_2, ..., r_{i-1},  k,  x) := ∑_{y} eq(y, r_1, r_2, ..., r_{i-1}) * poly(y, k, x)
+        //
+        // To compute this, we compute the challenge term: eq(y, r_1, r_2, ..., r_{i-1}) in the challenge matrix polynomial.
+        // Further, we multiply that with poly(y, k, x) and sum it over y to get polynomial evaluation at
+        // (r_1, r_2, ..., r_{i-1},  k,  x).
+        //
+        for round_number in 2..=prover_state.num_vars {
+            for k in 0..(r_degree + 1) {
+                let poly_hadamard_product_len = matrix_polynomials[0].no_of_columns / 2;
+                let mut poly_hadamard_product: Vec<EF> = vec![EF::ONE; poly_hadamard_product_len];
+
+                for matrix_poly in &matrix_polynomials {
+                    let width = matrix_poly.no_of_columns;
+                    let height = matrix_poly.no_of_rows;
+
+                    // Assert that the number of rows in the challenge and witness matrix are equal.
+                    assert_eq!(challenge_matrix_polynomial.no_of_rows, height);
+
+                    // This will store poly(r_1, r_2, ..., r_{i-1},  k,  x) for x ∈ {0, 1}^{l - i}.
+                    let mut poly_evaluation_at_k: Vec<EF> = vec![EF::zero(); width / 2];
+
+                    for row_idx in 0..height {
+                        let (even, odd) = matrix_poly.evaluation_rows[row_idx].split_at(width / 2);
+
+                        let row_evaluation_at_k: Vec<BF> = even
+                            .iter()
+                            .zip(odd.iter())
+                            .map(|(&e, &o)| {
+                                (BF::ONE - BF::from(k as u32)) * e + BF::from(k as u32) * o
+                            })
+                            .collect();
+
+                        // ATTENTION: multiplication of base field element with extension field element (be)
+                        let row_evaluation_at_k_mult_by_challenge: Vec<EF> = row_evaluation_at_k
+                            .iter()
+                            .map(|ek| {
+                                mult_be(
+                                    &ek,
+                                    &challenge_matrix_polynomial.evaluation_rows[row_idx][0],
+                                )
+                            })
+                            .collect();
+
+                        // ATTENTION: addition of extension field elements
+                        poly_evaluation_at_k
+                            .iter_mut()
+                            .zip(row_evaluation_at_k_mult_by_challenge.iter())
+                            .for_each(|(p_acc, p_curr)| *p_acc = add_ee(p_acc, &p_curr));
+                    }
+
+                    // ATTENTION: multiplication of extension field elements (ee)
+                    // TODO: We can use the combine function to generalise this.
+                    poly_hadamard_product
+                        .iter_mut()
+                        .zip(poly_evaluation_at_k.iter())
+                        .for_each(|(m_acc, m_curr)| *m_acc = mult_ee(m_acc, &m_curr));
+                }
+
+                // ATTENTION: addition of extension field elements
+                round_polynomials[round_number - 1][k as usize] = poly_hadamard_product
+                    .iter()
+                    .fold(EF::zero(), |acc, val| add_ee(&acc, val));
+            }
+
+            // append the round polynomial (i.e. prover message) to the transcript
+            <Transcript as TranscriptProtocol<G>>::append_scalars(
+                transcript,
+                b"r_poly",
+                &round_polynomials[round_number - 1],
+            );
+
+            // generate challenge α_i = H( transcript );
+            let alpha = <Transcript as TranscriptProtocol<G>>::challenge_scalar(
+                transcript,
+                b"challenge_nextround",
+            );
+
+            // Assert that challenge matrix has only one column.
+            assert_eq!(challenge_matrix_polynomial.no_of_columns, 1);
+
+            // Update challenge matrix with new challenge
+            let challenge_tuple =
+                DenseMultilinearExtension::from_evaluations_vec(1, vec![EF::ONE - alpha, alpha]);
+            let challenge_tuple_matrix = MatrixPolynomial::from_dense_mle(&challenge_tuple);
+            challenge_matrix_polynomial =
+                challenge_matrix_polynomial.tensor_hadamard_product(&challenge_tuple_matrix);
+
+            // Heighten the witness polynomial matrices
+            for j in 0..prover_state.max_multiplicands {
+                matrix_polynomials[j].heighten();
+            }
+        }
+    }
+
     ///
     /// Creates a sumcheck proof consisting of `n` round polynomials each of degree `d` using Algorithm 1.
     /// We allow for any function `combine_function` on a set of MLE polynomials.
     ///
-    pub fn prove<G, EC, BC, T>(
+    /// We implement four algorithms to compute the sumcheck proof according to the algorithms in the small-field
+    /// sumcheck paper by Justin Thaler: https://people.cs.georgetown.edu/jthaler/small-sumcheck.pdf
+    ///
+    pub fn prove<G, EC, BC, T, BE, AEE, EE>(
         prover_state: &mut ProverState<EF, BF>,
         ef_combine_function: &EC, // TODO: Using two combines is bad, templatize it?
         bf_combine_function: &BC,
         transcript: &mut Transcript,
         to_ef: &T,
+        mult_be: &BE,
+        add_ee: &AEE,
+        mult_ee: &EE,
     ) -> SumcheckProof<EF>
     where
         G: CurveGroup<ScalarField = EF>,
         BC: Fn(&Vec<BF>) -> EF + Sync,
         EC: Fn(&Vec<EF>) -> EF + Sync,
         T: Fn(&BF) -> EF + Sync,
+        BE: Fn(&BF, &EF) -> EF + Sync,
+        AEE: Fn(&EF, &EF) -> EF + Sync,
+        EE: Fn(&EF, &EF) -> EF + Sync,
     {
         // Initiate the transcript with the protocol name
         <Transcript as TranscriptProtocol<G>>::sumcheck_proof_domain_sep(
@@ -224,7 +411,17 @@ impl<EF: PrimeField, BF: PrimeField> IPForMLSumcheck<EF, BF> {
                 &mut r_polys,
                 to_ef,
             ),
-            AlgorithmType::WitnessChallengeSeparation => todo!(),
+            AlgorithmType::WitnessChallengeSeparation => {
+                Self::prove_with_witness_challenge_sep_agorithm::<G, BC, BE, AEE, EE>(
+                    prover_state,
+                    &bf_combine_function,
+                    transcript,
+                    &mut r_polys,
+                    &mult_be,
+                    &add_ee,
+                    &mult_ee,
+                )
+            }
             AlgorithmType::Precomputation => todo!(),
             AlgorithmType::Karatsuba => todo!(),
         }

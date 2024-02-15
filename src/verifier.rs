@@ -48,7 +48,6 @@ impl<EF: PrimeField, BF: PrimeField> IPForMLSumcheck<EF, BF> {
             let round_poly_evaluation_at_0 = round_poly_evaluations[0];
             let round_poly_evaluation_at_1 = round_poly_evaluations[1];
             let computed_sum = round_poly_evaluation_at_0 + round_poly_evaluation_at_1;
-            println!("computed_sum[{}] = {}", round_index, computed_sum);
 
             // Check r_{i}(α_i) == r_{i+1}(0) + r_{i+1}(1)
             if computed_sum != expected_sum {
