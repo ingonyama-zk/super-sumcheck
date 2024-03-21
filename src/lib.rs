@@ -1,5 +1,5 @@
-mod data_structures;
-mod prover;
+pub mod data_structures;
+pub mod prover;
 mod test;
 mod transcript;
 mod verifier;

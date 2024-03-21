@@ -4,6 +4,8 @@ use ark_std::{fmt, fmt::Formatter, iterable::Iterable};
 
 use ark_ff::Field;
 use ark_poly::DenseMultilinearExtension;
+use ark_poly::MultilinearExtension;
+use rand::Rng;
 
 /// Represents a pair of values (p(0), p(1)) where p(.) is a linear univariate polynomial of the form:
 /// p(X) = p(0).(1 - X) + p(1).X
@@ -87,6 +89,13 @@ impl<F: Field> LinearLagrangeList<F> {
             list: poly_list.to_vec(),
         }
     }
+
+    /// Create a random linear lagrange list
+    pub fn rand<R: Rng>(nv: usize, rng: &mut R) -> Self {
+        let poly = DenseMultilinearExtension::<F>::rand(nv, rng);
+        Self::from(&poly)
+    }
+
     /// Create a new un-initialized list (create with zero vectors)    
     pub fn new_uninitialized(size: &usize) -> LinearLagrangeList<F> {
         let vec = LinearLagrange::new(&F::zero(), &F::zero());
