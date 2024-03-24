@@ -159,9 +159,12 @@ impl<F: Field> fmt::Debug for LinearLagrange<F> {
 
 impl<F: Field> fmt::Debug for LinearLagrangeList<F> {
     fn fmt(&self, f: &mut Formatter<'_>) -> Result<(), fmt::Error> {
-        write!(f, "LinearLagrangeList(size = {}, list = [", self.size)?;
+        write!(f, "LinearLagrangeList(size = {}, list = [\n", self.size * 2)?;
         for i in 0..self.list.len() {
-            write!(f, "({}, {}) ", self.list[i].even, self.list[i].odd)?;
+            write!(f, "  {},\n", self.list[i].even)?;
+        }
+        for i in 0..self.list.len() {
+            write!(f, "  {},\n", self.list[i].odd)?;
         }
         write!(f, "])")?;
         Ok(())

@@ -114,18 +114,8 @@ impl<F: PrimeField> IPForMLSumcheck<F> {
                 }
             }
 
-            // append the round polynomial (i.e. prover message) to the transcript
-            <Transcript as TranscriptProtocol<G>>::append_scalars(
-                transcript,
-                b"r_poly",
-                &r_polys[round_index],
-            );
-
-            // generate challenge α_i = H( transcript );
-            let alpha = <Transcript as TranscriptProtocol<G>>::challenge_scalar(
-                transcript,
-                b"challenge_nextround",
-            );
+            // use a constant alpha for testing
+            let alpha = F::from(10 as u32);
 
             // update prover state polynomials
             for j in 0..prover_state.state_polynomials.len() {
@@ -218,18 +208,8 @@ impl<F: PrimeField> IPForMLSumcheck<F> {
                     round_matrix_polynomial.dot_product(&gamma_matrix);
             }
 
-            // append the round polynomial (i.e. prover message) to the transcript
-            <Transcript as TranscriptProtocol<G>>::append_scalars(
-                transcript,
-                b"r_poly",
-                &r_polys[round_index],
-            );
-
-            // generate challenge α_i = H( transcript );
-            let alpha = <Transcript as TranscriptProtocol<G>>::challenge_scalar(
-                transcript,
-                b"challenge_nextround",
-            );
+            // use a constant alpha for testing
+            let alpha = F::from(10 as u32);
 
             // Update challenge matrix with new challenge
             let challenge_tuple =

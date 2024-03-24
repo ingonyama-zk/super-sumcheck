@@ -14,7 +14,7 @@ use mle_single_poly::IPForMLSumcheck;
 use rand::Rng;
 use std::ops::Range;
 
-const NUM_VARIABLES_RANGE: Range<usize> = 10..21;
+const NUM_VARIABLES_RANGE: Range<usize> = 10..28;
 
 // Define the combine function for a product of values.
 fn combine_fn<F: PrimeField>(data: &Vec<F>) -> F {
@@ -49,7 +49,7 @@ fn prove_naive_algorithm_bench<F: PrimeField, G: CurveGroup>(
 
     let mut group = c.benchmark_group("Prove");
     for nv in NUM_VARIABLES_RANGE {
-        group.significance_level(0.05).sample_size(50);
+        group.significance_level(0.05).sample_size(10);
         group.bench_function(BenchmarkId::new("NaiveSumcheck", nv), |b| {
             b.iter_batched_ref(
                 || -> (ProverState<F>, Transcript) {

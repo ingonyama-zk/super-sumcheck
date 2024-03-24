@@ -54,18 +54,8 @@ impl<F: PrimeField> IPForMLSumcheck<F> {
                 return Err("Prover message is not consistent with the claim.".into());
             }
 
-            // append the prover's message to the transcript
-            <Transcript as TranscriptProtocol<G>>::append_scalars(
-                transcript,
-                b"r_poly",
-                &proof.round_polynomials[round_index],
-            );
-
-            // derive the verifier's challenge for the next round
-            let alpha = <Transcript as TranscriptProtocol<G>>::challenge_scalar(
-                transcript,
-                b"challenge_nextround",
-            );
+            // use a constant alpha for testing
+            let alpha = F::from(10 as u32);
 
             // Compute r_{i}(α_i) using barycentric interpolation
             expected_sum = barycentric_interpolation(round_poly_evaluations, alpha);
