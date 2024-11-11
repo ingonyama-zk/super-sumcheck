@@ -72,7 +72,7 @@ impl<F: PrimeField> IPForMLSumcheck<F> {
     /// Creates a sumcheck proof consisting of `n` round polynomials each of degree `d` using Algorithm 1.
     /// We allow for any function `combine_function` on a set of MLE polynomials.
     ///
-    pub fn prove<G, C>(
+    pub fn diagnostic_prove<G, C>(
         prover_state: &mut ProverState<F>,
         combine_function: &C,
         transcript: &mut Transcript,
@@ -81,13 +81,17 @@ impl<F: PrimeField> IPForMLSumcheck<F> {
         G: CurveGroup<ScalarField = F>,
         C: Fn(&Vec<F>) -> F + Sync,
     {
+        //fake FS
         // Initiate the transcript with the protocol name
         <Transcript as TranscriptProtocol<G>>::sumcheck_proof_domain_sep(
             transcript,
             prover_state.num_vars as u64,
             prover_state.max_multiplicands as u64,
         );
-
+        let mut alpha = F::from(4u8);
+        println!("\n Prover state: num_vars {:?}",prover_state.num_vars);
+        println!("\n Prover state: Max degree {:?}",prover_state.max_multiplicands);
+        println!("\n Prover state: Initial state polys: {:?}",prover_state.state_polynomials);
         // Declare r_polys and initialise it with 0s
         let r_degree = prover_state.max_multiplicands;
         let mut r_polys: Vec<Vec<F>> = (0..prover_state.num_vars)
@@ -95,7 +99,11 @@ impl<F: PrimeField> IPForMLSumcheck<F> {
             .collect();
 
         for round_index in 0..prover_state.num_vars {
+            println!("\n -------Round number: p: {:?}------------", round_index);
+            println!("\n ------Begin Phase_1:accumulate----------");
+            println!("\n Prover state: State polys in beginning of round {:?} are {:?}",round_index,prover_state.state_polynomials);
             let state_polynomial_len = prover_state.state_polynomials[0].list.len();
+            println!("\n State poly length is {:?} in round {:?}",state_polynomial_len,round_index);
             for k in 0..(r_degree + 1) {
                 for i in 0..state_polynomial_len {
                     let evaluations_at_k = prover_state
@@ -113,7 +121,86 @@ impl<F: PrimeField> IPForMLSumcheck<F> {
                     r_polys[round_index][k] += combine_function(&evaluations_at_k);
                 }
             }
+            println!("\n round poly r_{:?}[x] = {:?}",round_index,r_polys[round_index]);
+            println!("\n ------Begin Phase_2:FS----------");
+            // append the round polynomial (i.e. prover message) to the transcript
+                       // append the round polynomial (i.e. prover message) to the transcript
+            <Transcript as TranscriptProtocol<G>>::append_scalars(
+                        transcript,
+                        b"r_poly",
+                        &r_polys[round_index],
+            );
+        
+            // generate challenge α_i = H( transcript );
+            // alpha += F::from(1u8);
+                    //fake FS
+            println!("\n Alpha_{:?} = {:?}",round_index,alpha);
+            // update prover state polynomials
+            println!("\n ------Begin Phase_3: folding----------");
+            for j in 0..prover_state.state_polynomials.len() {
+                prover_state.state_polynomials[j].fold_in_half(alpha);
+            }
+            println!("\n State polynomial at end of round {:?} is {:?}",round_index,prover_state.state_polynomials);
+            alpha+=F::from(4u8);
+        }
+        println!("\n ------End Prover------");
+        SumcheckProof {
+            num_vars: prover_state.num_vars,
+            degree: r_degree,
+            round_polynomials: r_polys,
+        }
+    }
 
+    pub fn prove<G, C>(
+        prover_state: &mut ProverState<F>,
+        combine_function: &C,
+        transcript: &mut Transcript,
+    ) -> SumcheckProof<F>
+    where
+        G: CurveGroup<ScalarField = F>,
+        C: Fn(&Vec<F>) -> F + Sync,
+    {
+        // Initiate the transcript with the protocol name
+        <Transcript as TranscriptProtocol<G>>::sumcheck_proof_domain_sep(
+            transcript,
+            prover_state.num_vars as u64,
+            prover_state.max_multiplicands as u64,
+        );
+
+        println!("\n Prover state: num_vars {:?}",prover_state.num_vars);
+        println!("\n Prover state: Max degree {:?}",prover_state.max_multiplicands);
+        println!("\n Prover state: Initial state polys: {:?}",prover_state.state_polynomials);
+        // Declare r_polys and initialise it with 0s
+        let r_degree = prover_state.max_multiplicands;
+        let mut r_polys: Vec<Vec<F>> = (0..prover_state.num_vars)
+            .map(|_| vec![F::zero(); r_degree + 1])
+            .collect();
+
+        for round_index in 0..prover_state.num_vars {
+            println!("\n Round number: p: {:?}", round_index);
+            println!("\n Begin Phase_1:accumulate");
+            println!("\n Prover state: State polys in beginning of round {:?} are {:?}",round_index,prover_state.state_polynomials);
+            let state_polynomial_len = prover_state.state_polynomials[0].list.len();
+            println!("\n State poly length is {:?} in round {:?}",state_polynomial_len,round_index);
+            for k in 0..(r_degree + 1) {
+                for i in 0..state_polynomial_len {
+                    let evaluations_at_k = prover_state
+                        .state_polynomials
+                        .iter()
+                        .map(|state_poly| {
+                            // evaluate given state polynomial at x_1 = k
+                            let o = state_poly.list[i].odd;
+                            let e = state_poly.list[i].even;
+                            (F::one() - F::from(k as u32)) * e + F::from(k as u32) * o
+                        })
+                        .collect::<Vec<F>>();
+
+                    // apply combine function
+                    r_polys[round_index][k] += combine_function(&evaluations_at_k);
+                }
+            }
+            println!("\n round poly r_{:?}[x] = {:?}",round_index,r_polys[round_index]);
+            println!("\n Begin Phase_2:FS");
             // append the round polynomial (i.e. prover message) to the transcript
             <Transcript as TranscriptProtocol<G>>::append_scalars(
                 transcript,
@@ -126,11 +213,13 @@ impl<F: PrimeField> IPForMLSumcheck<F> {
                 transcript,
                 b"challenge_nextround",
             );
-
+            println!("\n Alpha_{:?} = {:?}",round_index,alpha);
             // update prover state polynomials
+            println!("\n Begin Phase_3: folding");
             for j in 0..prover_state.state_polynomials.len() {
                 prover_state.state_polynomials[j].fold_in_half(alpha);
             }
+            println!("\n State polynomial at end of round {:?} is {:?}",round_index,prover_state.state_polynomials);
         }
 
         SumcheckProof {
