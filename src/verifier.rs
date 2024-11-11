@@ -34,10 +34,12 @@ impl<F: PrimeField> IPForMLSumcheck<F> {
             proof.num_vars as u64,
             proof.degree as u64,
         );
-
+        println!("\n Verifier: Claimed sum {:?}",claimed_sum);
         let mut expected_sum = claimed_sum;
         for round_index in 0..proof.num_vars {
+            println!("\n Verifier: Round number {:?}",round_index.clone());
             let round_poly_evaluations: &Vec<F> = &proof.round_polynomials[round_index];
+            println!("\n Verifier: Round polynomials at round {:?} are {:?},",round_index,proof.round_polynomials[round_index].clone());
             if round_poly_evaluations.len() != (proof.degree + 1) {
                 panic!(
                     "incorrect number of evaluations of the {}-th round polynomial",
@@ -50,6 +52,8 @@ impl<F: PrimeField> IPForMLSumcheck<F> {
             let computed_sum = round_poly_evaluation_at_0 + round_poly_evaluation_at_1;
 
             // Check r_{i}(α_i) == r_{i+1}(0) + r_{i+1}(1)
+            println!("\n Verifier: Computed sum at round {:?} is {:?}",round_index,computed_sum.clone());
+            println!("\n Verifier: Expected sum at round {:?} is {:?}",round_index,expected_sum.clone());
             if computed_sum != expected_sum {
                 return Err("Prover message is not consistent with the claim.".into());
             }
@@ -66,9 +70,72 @@ impl<F: PrimeField> IPForMLSumcheck<F> {
                 transcript,
                 b"challenge_nextround",
             );
-
+            println!("\n Verifier: alpha_{:?} = {:?}",round_index,alpha);
             // Compute r_{i}(α_i) using barycentric interpolation
             expected_sum = barycentric_interpolation(round_poly_evaluations, alpha);
+        }
+        Ok(true)
+    }
+
+    pub fn diagnostic_verify<G>(
+        claimed_sum: F,
+        proof: &SumcheckProof<F>,
+        transcript: &mut Transcript,
+    ) -> Result<bool, &'static str>
+    where
+        G: CurveGroup<ScalarField = F>,
+    {
+        if proof.num_vars == 0 {
+            return Err("Invalid proof.");
+        }
+
+        // Initiate the transcript with the protocol name
+        <Transcript as TranscriptProtocol<G>>::sumcheck_proof_domain_sep(
+            transcript,
+            proof.num_vars as u64,
+            proof.degree as u64,
+        );
+        println!("\n Verifier: Claimed sum {:?}",claimed_sum);
+        let mut alpha = F::from(4u8);
+        let mut expected_sum = claimed_sum;
+        for round_index in 0..proof.num_vars {
+            println!("\n Verifier: Round number {:?}",round_index.clone());
+            let round_poly_evaluations: &Vec<F> = &proof.round_polynomials[round_index];
+            println!("\n Verifier: Round polynomials at round {:?} are {:?},",round_index,proof.round_polynomials[round_index].clone());
+            if round_poly_evaluations.len() != (proof.degree + 1) {
+                panic!(
+                    "incorrect number of evaluations of the {}-th round polynomial",
+                    round_index + 1
+                );
+            }
+
+            let round_poly_evaluation_at_0 = round_poly_evaluations[0];
+            let round_poly_evaluation_at_1 = round_poly_evaluations[1];
+            let computed_sum = round_poly_evaluation_at_0 + round_poly_evaluation_at_1;
+
+            // Check r_{i}(α_i) == r_{i+1}(0) + r_{i+1}(1)
+            println!("\n Verifier: Computed sum at round {:?} is {:?}",round_index,computed_sum.clone());
+            println!("\n Verifier: Expected sum at round {:?} is {:?}",round_index,expected_sum.clone());
+            if computed_sum != expected_sum {
+                return Err("Prover message is not consistent with the claim.".into());
+            }
+
+            // append the prover's message to the transcript
+            <Transcript as TranscriptProtocol<G>>::append_scalars(
+                transcript,
+                b"r_poly",
+                &proof.round_polynomials[round_index],
+            );
+
+            // derive the verifier's challenge for the next round
+            // let alpha = <Transcript as TranscriptProtocol<G>>::challenge_scalar(
+            //     transcript,
+            //     b"challenge_nextround",
+            // );
+            println!("\n Verifier: alpha_{:?} = {:?}",round_index,alpha);
+            // Compute r_{i}(α_i) using barycentric interpolation
+            expected_sum = barycentric_interpolation(round_poly_evaluations, alpha);
+            alpha+=F::from(4u8);
         }
         Ok(true)
     }

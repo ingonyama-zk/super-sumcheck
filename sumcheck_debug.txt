@@ -1,0 +1,112 @@
+running 1 test
+test test::integration_tests::test_r1cs_sumcheck_diagnostic ... ok
+
+successes:
+
+---- test::integration_tests::test_r1cs_sumcheck_diagnostic stdout ----
+Poly A [BigInt([1, 0, 0, 0]), BigInt([2, 0, 0, 0]), BigInt([3, 0, 0, 0]), BigInt([4, 0, 0, 0]), BigInt([5, 0, 0, 0]), BigInt([6, 0, 0, 0]), BigInt([7, 0, 0, 0]), BigInt([8, 0, 0, 0])]
+Poly B [BigInt([11, 0, 0, 0]), BigInt([12, 0, 0, 0]), BigInt([13, 0, 0, 0]), BigInt([14, 0, 0, 0]), BigInt([15, 0, 0, 0]), BigInt([16, 0, 0, 0]), BigInt([17, 0, 0, 0]), BigInt([18, 0, 0, 0])]
+Poly C [BigInt([21, 0, 0, 0]), BigInt([22, 0, 0, 0]), BigInt([23, 0, 0, 0]), BigInt([24, 0, 0, 0]), BigInt([25, 0, 0, 0]), BigInt([26, 0, 0, 0]), BigInt([27, 0, 0, 0]), BigInt([28, 0, 0, 0])]
+Poly Eq [BigInt([2, 0, 0, 0]), BigInt([10, 0, 0, 0]), BigInt([1, 0, 0, 0]), BigInt([6, 0, 0, 0]), BigInt([9, 0, 0, 0]), BigInt([3, 0, 0, 0]), BigInt([8, 0, 0, 0]), BigInt([7, 0, 0, 0])]
+claimed sum BigInt([2416, 0, 0, 0])
+
+ Prover state: num_vars 3
+
+ Prover state: Max degree 3
+
+ Prover state: Initial state polys: [LinearLagrangeList(size = 4, list = [(1, 5) (2, 6) (3, 7) (4, 8) ]), LinearLagrangeList(size = 4, list = [(11, 15) (12, 16) (13, 17) (14, 18) ]), LinearLagrangeList(size = 4, list = [(21, 25) (22, 26) (23, 27) (24, 28) ]), LinearLagrangeList(size = 4, list = [(2, 9) (10, 3) (1, 8) (6, 7) ])]
+
+ -------Round number: p: 0------------
+
+ ------Begin Phase_1:accumulate----------
+
+ Prover state: State polys in beginning of round 0 are [LinearLagrangeList(size = 4, list = [(1, 5) (2, 6) (3, 7) (4, 8) ]), LinearLagrangeList(size = 4, list = [(11, 15) (12, 16) (13, 17) (14, 18) ]), LinearLagrangeList(size = 4, list = [(21, 25) (22, 26) (23, 27) (24, 28) ]), LinearLagrangeList(size = 4, list = [(2, 9) (10, 3) (1, 8) (6, 7) ])]
+
+ State poly length is 4 in round 0
+
+ round poly r_0[x] = [BigInt([208, 0, 0, 0]), BigInt([2208, 0, 0, 0]), BigInt([6448, 0, 0, 0]), BigInt([13696, 0, 0, 0])]
+
+ ------Begin Phase_2:FS----------
+
+ Alpha_0 = BigInt([4, 0, 0, 0])
+
+ ------Begin Phase_3: folding----------
+
+ State polynomial at end of round 0 is [LinearLagrangeList(size = 2, list = [(17, 19) (18, 20) ]), LinearLagrangeList(size = 2, list = [(27, 29) (28, 30) ]), LinearLagrangeList(size = 2, list = [(37, 39) (38, 40) ]), LinearLagrangeList(size = 2, list = [(30, 29) (52435875175126190479447740508185965837690552500527637822603658699938581184495, 10) ])]
+
+ -------Round number: p: 1------------
+
+ ------Begin Phase_1:accumulate----------
+
+ Prover state: State polys in beginning of round 1 are [LinearLagrangeList(size = 2, list = [(17, 19) (18, 20) ]), LinearLagrangeList(size = 2, list = [(27, 29) (28, 30) ]), LinearLagrangeList(size = 2, list = [(37, 39) (38, 40) ]), LinearLagrangeList(size = 2, list = [(30, 29) (52435875175126190479447740508185965837690552500527637822603658699938581184495, 10) ])]
+
+ State poly length is 2 in round 1
+
+ round poly r_1[x] = [BigInt([4272, 0, 0, 0]), BigInt([20448, 0, 0, 0]), BigInt([42236, 0, 0, 0]), BigInt([70284, 0, 0, 0])]
+
+ ------Begin Phase_2:FS----------
+
+ Alpha_1 = BigInt([8, 0, 0, 0])
+
+ ------Begin Phase_3: folding----------
+
+ State polynomial at end of round 1 is [LinearLagrangeList(size = 1, list = [(33, 34) ]), LinearLagrangeList(size = 1, list = [(43, 44) ]), LinearLagrangeList(size = 1, list = [(53, 54) ]), LinearLagrangeList(size = 1, list = [(22, 206) ])]
+
+ -------Round number: p: 2------------
+
+ ------Begin Phase_1:accumulate----------
+
+ Prover state: State polys in beginning of round 2 are [LinearLagrangeList(size = 1, list = [(33, 34) ]), LinearLagrangeList(size = 1, list = [(43, 44) ]), LinearLagrangeList(size = 1, list = [(53, 54) ]), LinearLagrangeList(size = 1, list = [(22, 206) ])]
+
+ State poly length is 1 in round 2
+
+ round poly r_2[x] = [BigInt([30052, 0, 0, 0]), BigInt([297052, 0, 0, 0]), BigInt([592800, 0, 0, 0]), BigInt([918400, 0, 0, 0])]
+
+ ------Begin Phase_2:FS----------
+
+ Alpha_2 = BigInt([12, 0, 0, 0])
+
+ ------Begin Phase_3: folding----------
+
+ State polynomial at end of round 2 is [LinearLagrangeList(size = 0, list = []), LinearLagrangeList(size = 0, list = []), LinearLagrangeList(size = 0, list = []), LinearLagrangeList(size = 0, list = [])]
+
+ ------End Prover------
+
+ Verifier: Claimed sum BigInt([2416, 0, 0, 0])
+
+ Verifier: Round number 0
+
+ Verifier: Round polynomials at round 0 are [BigInt([208, 0, 0, 0]), BigInt([2208, 0, 0, 0]), BigInt([6448, 0, 0, 0]), BigInt([13696, 0, 0, 0])],
+
+ Verifier: Computed sum at round 0 is BigInt([2416, 0, 0, 0])
+
+ Verifier: Expected sum at round 0 is BigInt([2416, 0, 0, 0])
+
+ Verifier: alpha_0 = BigInt([4, 0, 0, 0])
+
+ Verifier: Round number 1
+
+ Verifier: Round polynomials at round 1 are [BigInt([4272, 0, 0, 0]), BigInt([20448, 0, 0, 0]), BigInt([42236, 0, 0, 0]), BigInt([70284, 0, 0, 0])],
+
+ Verifier: Computed sum at round 1 is BigInt([24720, 0, 0, 0])
+
+ Verifier: Expected sum at round 1 is BigInt([24720, 0, 0, 0])
+
+ Verifier: alpha_1 = BigInt([8, 0, 0, 0])
+
+ Verifier: Round number 2
+
+ Verifier: Round polynomials at round 2 are [BigInt([30052, 0, 0, 0]), BigInt([297052, 0, 0, 0]), BigInt([592800, 0, 0, 0]), BigInt([918400, 0, 0, 0])],
+
+ Verifier: Computed sum at round 2 is BigInt([327104, 0, 0, 0])
+
+ Verifier: Expected sum at round 2 is BigInt([327104, 0, 0, 0])
+
+ Verifier: alpha_2 = BigInt([12, 0, 0, 0])
+
+
+successes:
+    test::integration_tests::test_r1cs_sumcheck_diagnostic
+
+test result: ok. 1 passed; 0 failed; 0 ignored; 0 measured; 15 filtered out; finished in 0.00s
+
