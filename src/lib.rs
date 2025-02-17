@@ -1,8 +1,8 @@
-mod data_structures;
-mod prover;
+pub mod data_structures;
+pub mod prover;
 mod test;
-mod transcript;
-mod verifier;
+pub mod transcript;
+pub mod verifier;
 
 use ark_ff::Field;
 use ark_std::marker::PhantomData;

@@ -15,5 +15,17 @@ hashbrown = { version = "0.14.0" }
 rayon = { version = "1", optional = true }
 ark-ec = { version = "0.4.2"}
 ark-bls12-381 = {version = "0.4.0"}
+ark-bn254 = {version = "0.4.0"}
 rand = "0.8"
 merlin ={ version = "3.0.0"}
+
+log = "0.4.25"
+env_logger = "0.11.6"
+
+
+[dev-dependencies]
+criterion = "0.5.1"
+
+[[bench]]
+name = "benchmark"
+harness = false
